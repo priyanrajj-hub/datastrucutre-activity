@@ -67,7 +67,6 @@ class Request {
         this.status = 'pending';
         this.timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         this.next = null;
-        this.hashNext = null;
 
         // Parse structured fields from roll number
         const parsed = parseRollNumber(rollNo);
@@ -91,42 +90,54 @@ class HashTable {
 
     /** Polynomial rolling hash: h = Σ(char × 31^i) mod size */
     hash(key) {
+        let str = String(key).toUpperCase();
         let h = 0;
-        for (let i = 0; i < key.length; i++) {
-            h = (h * 31 + key.charCodeAt(i)) % this.size;
+        for (let i = 0; i < str.length; i++) {
+            h = (h * 31 + str.charCodeAt(i)) % this.size;
         }
         return h;
     }
 
-    insert(req) {
-        const idx = this.hash(req.requestId);
-        req.hashNext = this.buckets[idx];
-        this.buckets[idx] = req;
+    insert(key, req) {
+        if (!key) return;
+        const strKey = String(key).toUpperCase();
+        const idx = this.hash(strKey);
+        const entry = { key: strKey, req: req, hashNext: this.buckets[idx] };
+        this.buckets[idx] = entry;
     }
 
-    find(requestId) {
-        const idx = this.hash(requestId);
+    find(key) {
+        if (!key) return null;
+        const strKey = String(key).toUpperCase();
+        const idx = this.hash(strKey);
         let cur = this.buckets[idx];
         while (cur) {
-            if (cur.requestId === requestId) return cur;
+            if (cur.key === strKey) return cur.req;
             cur = cur.hashNext;
         }
         return null;
     }
 
-    remove(requestId) {
-        const idx = this.hash(requestId);
+    removeNode(req) {
+        this.removeKey(req.requestId);
+        this.removeKey(req.rollNumber);
+        this.removeKey(req.studentName);
+    }
+
+    removeKey(key) {
+        if (!key) return;
+        const strKey = String(key).toUpperCase();
+        const idx = this.hash(strKey);
         let cur = this.buckets[idx], prev = null;
         while (cur) {
-            if (cur.requestId === requestId) {
+            if (cur.key === strKey) {
                 if (prev) prev.hashNext = cur.hashNext;
                 else this.buckets[idx] = cur.hashNext;
-                return cur;
+                return;
             }
             prev = cur;
             cur = cur.hashNext;
         }
-        return null;
     }
 }
 
@@ -172,7 +183,9 @@ class HelpdeskQueue {
         if (!this.rear) { this.front = this.rear = req; }
         else { this.rear.next = req; this.rear = req; }
 
-        this.ht.insert(req);
+        this.ht.insert(req.requestId, req);
+        this.ht.insert(req.rollNumber, req);
+        this.ht.insert(req.studentName, req);
         this.size++;
         return { ok: true, req };
     }
@@ -183,7 +196,7 @@ class HelpdeskQueue {
         this.front = this.front.next;
         if (!this.front) this.rear = null;
         t.status = 'resolved';
-        this.ht.remove(t.requestId);
+        this.ht.removeNode(t);
         this.size--;
         return t;
     }
@@ -197,7 +210,7 @@ class HelpdeskQueue {
                 else this.front = cur.next;
                 if (cur === this.rear) this.rear = prev;
                 cur.status = 'resolved';
-                this.ht.remove(cur.requestId);
+                this.ht.removeNode(cur);
                 this.size--;
                 return cur;
             }
@@ -249,7 +262,9 @@ class HelpdeskQueue {
                 if (i.memAddr) r.memAddr = i.memAddr;
                 if (!q.rear) { q.front = q.rear = r; }
                 else { q.rear.next = r; q.rear = r; }
-                q.ht.insert(r);
+                q.ht.insert(r.requestId, r);
+                q.ht.insert(r.rollNumber, r);
+                q.ht.insert(r.studentName, r);
                 q.size++;
             });
         } catch (e) { console.warn('[Helpdesk] Failed to restore queue:', e); }
@@ -553,6 +568,25 @@ function syncData() {
     }
 
     sync3DScene(items);
+
+    // Hash Table Array Hardware Rendering
+    const hArray = document.getElementById('hash-array');
+    if (hArray) {
+        hArray.innerHTML = '';
+        for (let i = 0; i < CQ.ht.size; i++) {
+            let cur = CQ.ht.buckets[i];
+            let keys = [];
+            while (cur) { keys.push(cur.key); cur = cur.hashNext; }
+
+            const b = document.createElement('div');
+            b.className = 'hash-bucket';
+            b.id = 'hb-' + i;
+            const valHtml = keys.length ? keys.join('<br>') : 'NULL';
+            b.innerHTML = `<div class="hb-idx">[ ${i} ]</div><div class="hb-val ${keys.length ? '' : 'null'}" style="font-size:0.55rem; line-height:1.2;">${valHtml}</div>`;
+            hArray.appendChild(b);
+        }
+    }
+
     persist();
 }
 
@@ -603,15 +637,48 @@ function sync3DScene(items) {
         `;
         UI.scene.appendChild(node);
     });
+
+    // Add Physical Head/Tail Pointers floating in the 3D space
+    if (items.length > 0) {
+        const headNode = document.createElement('div');
+        headNode.className = 'ptr-node';
+        headNode.style.transform = `translate3d(${-centerOffset}px, -100px, 15px)`;
+        headNode.innerHTML = `
+            <div class="ptr-title">Head</div>
+            <div class="ptr-target">${items[0].memAddr}</div>
+            <div class="ptr-down-arrow"></div>
+        `;
+
+        const tailIdx = items.length - 1;
+        const tailX = (tailIdx * spacingX) - centerOffset;
+        const tailNode = document.createElement('div');
+        tailNode.className = 'ptr-node';
+        tailNode.style.transform = `translate3d(${tailX}px, -100px, ${tailIdx * -25 + 15}px)`;
+        tailNode.innerHTML = `
+            <div class="ptr-title rear">Tail</div>
+            <div class="ptr-target rear">${items[tailIdx].memAddr}</div>
+            <div class="ptr-down-arrow rear"></div>
+        `;
+
+        UI.scene.appendChild(headNode);
+        UI.scene.appendChild(tailNode);
+    }
 }
 
 /* ═══════════════════════════════════════════════ */
 /*  Enqueue                                        */
 /* ═══════════════════════════════════════════════ */
 
+let lastSubmitTime = 0;
 UI.addForm.addEventListener('submit', e => {
     e.preventDefault();
     if (isAnimating) return;
+
+    if (Date.now() - lastSubmitTime < 1500) {
+        showToast('Rate limited: Please wait an internal clock cycle before enqueuing.', 'error');
+        return;
+    }
+    lastSubmitTime = Date.now();
 
     const roll = UI.inRoll.value.toLowerCase().trim();
     const name = UI.inName.value.trim();
@@ -710,10 +777,15 @@ async function animateHashSearch(requestId) {
     hlLine(['h-4', 'h-5']);
     UI.hashCalc.textContent = requestId;
     UI.hashBkt.textContent = h.toString();
+
+    const hb = document.getElementById('hb-' + h);
+    if (hb) hb.classList.add('active');
+
     await new Promise(r => setTimeout(r, 700));
 
     hlLine(['src-3']);
     UI.hashOvl.classList.add('hidden');
+    if (hb) hb.classList.remove('active');
 
     const req = CQ.ht.find(requestId);
     if (req) {

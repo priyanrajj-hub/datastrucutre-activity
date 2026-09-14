@@ -10,6 +10,7 @@
 // 1. Define the Node for our Queue Data Structure
 typedef struct Request {
     char requestId[20];
+    char rollNumber[20];
     char studentName[50];
     char problemType[50];
     struct Request* next;
@@ -37,7 +38,11 @@ void addRequest() {
     // Auto-generate Request ID (e.g., REQ-0001)
     sprintf(newReq->requestId, "REQ-%04d", counter++);
     
-    printf("\nEnter Student Name: ");
+    printf("\nEnter Roll Number: ");
+    clearBuffer();
+    scanf("%[^\n]s", newReq->rollNumber);
+
+    printf("Enter Student Name: ");
     clearBuffer();
     scanf("%[^\n]s", newReq->studentName);
     
@@ -104,19 +109,23 @@ void searchRequest() {
         return;
     }
     
-    char searchId[20];
-    printf("\nEnter Request ID to search (e.g., REQ-0001): ");
-    scanf("%s", searchId);
+    char searchKey[50];
+    printf("\nEnter Request ID, Roll Number, or Name to search: ");
+    clearBuffer();
+    scanf("%[^\n]s", searchKey);
 
     // Linear search traversal through the Linked List
     Request* temp = front;
     int position = 1;
     
     while (temp != NULL) {
-        if (strcmp(temp->requestId, searchId) == 0) {
+        if (strcasecmp(temp->requestId, searchKey) == 0 || 
+            strcasecmp(temp->rollNumber, searchKey) == 0 || 
+            strcasecmp(temp->studentName, searchKey) == 0) {
             printf("\n🔍 Request Found at Position %d in Queue!\n", position);
             printf("----------------------------------------\n");
             printf("Request ID   : %s\n", temp->requestId);
+            printf("Roll Number  : %s\n", temp->rollNumber);
             printf("Student Name : %s\n", temp->studentName);
             printf("Problem Type : %s\n", temp->problemType);
             printf("----------------------------------------\n");
@@ -126,7 +135,7 @@ void searchRequest() {
         position++;
     }
     
-    printf("\n❌ Request ID '%s' not found in the active queue.\n", searchId);
+    printf("\n❌ Key '%s' not found in the active queue.\n", searchKey);
 }
 
 // Requirement 4: Display the current requests

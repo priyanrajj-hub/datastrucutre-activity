@@ -4,6 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;">
     <title>Campus Helpdesk — Queue Management System</title>
     <meta name="description"
         content="Real-time campus helpdesk queue management system using FIFO Queue and Hash Table data structures.">
@@ -146,7 +148,7 @@
                     <div class="input-group">
                         <label for="input-roll">Roll Number</label>
                         <input type="text" id="input-roll" required placeholder="e.g. ch.en.u4cce25020"
-                            autocomplete="off" spellcheck="false">
+                            autocomplete="off" spellcheck="false" maxlength="20">
                         <span id="roll-error" class="input-hint error hidden">Invalid format — expected e.g.
                             ch.en.u4cce25020</span>
                         <span id="roll-valid" class="input-hint valid hidden">✓ Valid roll number</span>
@@ -155,7 +157,7 @@
                         <div class="input-group">
                             <label for="input-name">Student Name</label>
                             <input type="text" id="input-name" required placeholder="e.g. Priyanraj J"
-                                autocomplete="off">
+                                autocomplete="off" maxlength="40">
                             <span id="name-error" class="input-hint error hidden">Letters and spaces only</span>
                         </div>
                         <div class="input-group">
@@ -171,9 +173,9 @@
                     </div>
                     <div class="input-group hidden" id="desc-group">
                         <label for="input-desc">Describe the issue</label>
-                        <input type="text" id="input-desc" placeholder="Briefly describe the problem…">
+                        <input type="text" id="input-desc" placeholder="Briefly describe the problem…" maxlength="100">
                     </div>
-                    <button type="submit" class="btn-accent w-full">
+                    <button type="submit" class="btn-accent w-full" id="btn-submit">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2.5">
                             <line x1="12" y1="5" x2="12" y2="19" />
@@ -194,7 +196,7 @@
                     Track Your Request
                 </h3>
                 <div class="search-box">
-                    <input type="text" id="input-student-search" placeholder="Enter your Request ID (e.g. REQ-0001)">
+                    <input type="text" id="input-student-search" placeholder="Search ID, Name, or Roll No...">
                     <button id="btn-student-search" type="button" class="btn-secondary">Check</button>
                 </div>
                 <div id="student-search-result" class="search-result"></div>
@@ -265,7 +267,7 @@
                     </h2>
                     <div class="actions">
                         <div class="search-box">
-                            <input type="text" id="input-search" placeholder="Search REQ-XXXX…">
+                            <input type="text" id="input-search" placeholder="Search ID, Name, or Roll...">
                             <button id="btn-search" class="btn-secondary">Search</button>
                         </div>
                         <button id="btn-process" class="btn-accent">
@@ -325,9 +327,9 @@
 
                     <div class="canvas-3d-container">
                         <div id="hash-overlay" class="hash-overlay hidden">
-                            <div class="hash-label">Rolling Hash</div>
+                            <div class="hash-label">Rolling Hash Computation</div>
                             <div>Key: <span id="hash-calc-text">…</span></div>
-                            <div>Bucket: <span id="hash-bucket-text">…</span></div>
+                            <div>Bucket Index: <span id="hash-bucket-text">…</span></div>
                         </div>
                         <div class="scene" id="scene"></div>
                         <div id="scene-empty" class="scene-empty">
@@ -337,6 +339,14 @@
                                 <path d="M12 8v4l3 3" />
                             </svg>
                             <p>Queue is empty — add requests to visualize</p>
+                        </div>
+                    </div>
+
+                    <!-- Core Hardware Memory Array -->
+                    <div class="hash-array-container">
+                        <div class="hash-array-title">Hardware Hash Map Buckets [0 ... 16]</div>
+                        <div class="hash-array" id="hash-array">
+                            <!-- JS Injected Buckets -->
                         </div>
                     </div>
                 </div>
