@@ -73,6 +73,9 @@ class Request {
         const parsed = parseRollNumber(rollNo);
         this.department = parsed ? parsed.dept.toUpperCase() : '—';
         this.admissionYear = parsed ? '20' + parsed.year : '—';
+
+        // Literal hardware memory address simulation
+        this.memAddr = '0x' + Math.floor(Math.random() * 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
     }
 }
 
@@ -227,7 +230,7 @@ class HelpdeskQueue {
                 studentName: r.studentName, problemType: r.problemType,
                 issueDetail: r.issueDetail, status: r.status,
                 timestamp: r.timestamp, department: r.department,
-                admissionYear: r.admissionYear
+                admissionYear: r.admissionYear, memAddr: r.memAddr
             }))
         });
     }
@@ -243,6 +246,7 @@ class HelpdeskQueue {
                 r.timestamp = i.timestamp;
                 if (i.department) r.department = i.department;
                 if (i.admissionYear) r.admissionYear = i.admissionYear;
+                if (i.memAddr) r.memAddr = i.memAddr;
                 if (!q.rear) { q.front = q.rear = r; }
                 else { q.rear.next = r; q.rear = r; }
                 q.ht.insert(r);
@@ -561,42 +565,42 @@ function sync3DScene(items) {
     if (!items.length) { UI.scEmpty.classList.remove('hidden'); return; }
     UI.scEmpty.classList.add('hidden');
 
+    const spacingX = 200;
+    const centerOffset = ((items.length - 1) * spacingX) / 2;
+
     items.forEach((req, idx) => {
         const node = document.createElement('div');
         node.className = 'queue-node';
         node.id = 'q3d-' + req.requestId;
-        if (idx === 0) node.classList.add('is-front');
-        if (idx === items.length - 1) node.classList.add('is-rear');
 
-        const z = -(idx * 80), y = -(idx * 16), x = -(idx * 16);
-        node.style.transform = `translate3d(${x}px,${y}px,${z}px)`;
+        // Spread horizontally, centered, slight diagonal pop back
+        const x = (idx * spacingX) - centerOffset;
+        const y = idx * -10;
+        const z = idx * -25;
+        node.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
 
-        // FRONT tag
-        const tagF = document.createElement('div');
-        tagF.className = 'scene-tag tag-front';
-        tagF.textContent = 'FRONT';
+        const isFront = idx === 0;
+        const isRear = idx === items.length - 1;
+        const nextAddr = req.next ? req.next.memAddr : 'NULL';
+        const ptrClass = req.next ? '' : 'null';
 
-        // Request ID
-        const nRid = document.createElement('div');
-        nRid.className = 'n-rid';
-        nRid.textContent = req.requestId;
-
-        // Roll number
-        const nRoll = document.createElement('div');
-        nRoll.className = 'n-roll';
-        nRoll.textContent = req.rollNumber;
-
-        // Department badge
-        const nDept = document.createElement('div');
-        nDept.className = 'n-dept';
-        nDept.textContent = req.department;
-
-        // REAR tag
-        const tagR = document.createElement('div');
-        tagR.className = 'scene-tag tag-rear';
-        tagR.textContent = 'REAR';
-
-        node.append(tagF, nRid, nRoll, nDept, tagR);
+        node.innerHTML = `
+            ${isFront ? '<div class="scene-tag tag-front visible">FRONT</div>' : ''}
+            <div style="text-align:center"><span class="node-address">${req.memAddr}</span></div>
+            <div class="node-box">
+                <div class="node-data">
+                    <div class="n-rid">${req.requestId}</div>
+                    <div class="n-roll">${req.rollNumber}</div>
+                    <div class="n-dept">${req.department}</div>
+                </div>
+                <div class="node-ptr">
+                    <span class="ptr-label">next:</span>
+                    <span class="ptr-val ${ptrClass}">${nextAddr}</span>
+                </div>
+            </div>
+            ${!isRear ? '<div class="node-arrow"></div>' : ''}
+            ${isRear ? '<div class="scene-tag tag-rear visible">REAR</div>' : ''}
+        `;
         UI.scene.appendChild(node);
     });
 }
@@ -774,25 +778,30 @@ UI.btnStuSrc.addEventListener('click', () => {
 /*  Auto-Demo                                      */
 /* ═══════════════════════════════════════════════ */
 
+let demoCount = 0;
 UI.btnDemo.addEventListener('click', async () => {
     if (isAnimating) return;
     UI.btnDemo.disabled = true;
+    demoCount++;
 
-    // Enqueue Alice (CSE)
-    const d1 = CQ.enqueue('ch.en.u4cse25010', 'Alice Sharma', 'WiFi', '');
+    const r1 = `ch.en.u4cse25${String(demoCount).padStart(3, '0')}`;
+    const r2 = `ch.en.u4cce25${String(100 + demoCount).padStart(3, '0')}`;
+
+    // Enqueue node 1
+    const d1 = CQ.enqueue(r1, 'Alice Check', 'WiFi', '');
     syncData();
     const n1 = document.getElementById('q3d-' + d1.req.requestId);
     if (n1) { n1.style.transform = ''; n1.classList.add('anim-enqueue'); }
     await new Promise(r => setTimeout(r, 900));
 
-    // Enqueue Bob (CCE — different department!)
-    const d2 = CQ.enqueue('ch.en.u4cce25020', 'Bob Kumar', 'Other', 'Projector remote');
+    // Enqueue node 2
+    const d2 = CQ.enqueue(r2, 'Bob Check', 'Other', 'Demo issue');
     syncData();
     const n2 = document.getElementById('q3d-' + d2.req.requestId);
     if (n2) { n2.style.transform = ''; n2.classList.add('anim-enqueue'); }
     await new Promise(r => setTimeout(r, 1000));
 
-    // Search Bob via hash
+    // Search Demo
     isAnimating = true;
     await animateHashSearch(d2.req.requestId);
     isAnimating = false;
