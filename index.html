@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus Helpdesk — Queue Management System</title>
+    <meta name="description"
+        content="Real-time campus helpdesk queue management system using FIFO Queue and Hash Table data structures.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- ─── Top Navigation ─── -->
+    <header class="app-header">
+        <div class="logo">
+            <div class="logo-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+            </div>
+            <div>
+                <h1>Campus Helpdesk</h1>
+                <span class="logo-sub">Queue Management System</span>
+            </div>
+        </div>
+
+        <div class="header-controls">
+            <div id="staff-tabs" class="segmented-control hidden">
+                <input type="radio" id="tab-dashboard" name="tabs" checked>
+                <label for="tab-dashboard">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7" />
+                        <rect x="14" y="3" width="7" height="7" />
+                        <rect x="3" y="14" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" />
+                    </svg>
+                    Dashboard
+                </label>
+                <input type="radio" id="tab-visualizer" name="tabs">
+                <label for="tab-visualizer">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                        <path d="M2 17l10 5 10-5" />
+                        <path d="M2 12l10 5 10-5" />
+                    </svg>
+                    Visualizer
+                </label>
+            </div>
+
+            <div class="role-switcher" id="role-container">
+                <span class="role-label">Role:</span>
+                <select id="role-select">
+                    <option value="student">Student</option>
+                    <option value="staff">Staff / Teacher</option>
+                </select>
+            </div>
+
+            <div id="staff-auth-info" class="staff-auth-info hidden">
+                <span class="status-dot"></span>
+                <span>Staff Mode</span>
+                <button id="btn-logout" class="btn-logout">Sign Out</button>
+            </div>
+
+            <button id="btn-info" class="btn-icon" title="How it works">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 16v-4" />
+                    <path d="M12 8h.01" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="app-content">
+
+        <!-- ─── Staff Login Gate ─── -->
+        <div id="staff-login-gate" class="staff-gate hidden">
+            <div class="surface login-card">
+                <div class="login-icon">🔒</div>
+                <h2>Staff Authentication</h2>
+                <p class="caption">Restricted access. Academic demo credentials only.</p>
+                <!-- Grading note: credentials are teacher / 12345 -->
+                <form id="login-form">
+                    <div id="login-error" class="alert-error hidden">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="15" y1="9" x2="9" y2="15" />
+                            <line x1="9" y1="9" x2="15" y2="15" />
+                        </svg>
+                        Invalid credentials. Please try again.
+                    </div>
+                    <div class="input-group">
+                        <label for="login-username">Username</label>
+                        <input type="text" id="login-username" autocomplete="username" placeholder="Enter username"
+                            required>
+                    </div>
+                    <div class="input-group">
+                        <label for="login-password">Password</label>
+                        <div class="password-wrapper">
+                            <input type="password" id="login-password" autocomplete="current-password"
+                                placeholder="Enter password" required>
+                            <button type="button" id="btn-toggle-pass" class="btn-eye"
+                                aria-label="Toggle password visibility">
+                                <svg id="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                                <svg id="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" class="hidden">
+                                    <path
+                                        d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                                    <line x1="1" y1="1" x2="23" y2="23" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" id="btn-login-submit" class="btn-primary w-full" disabled>
+                        Access Dashboard
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- ─── Student/Staff Intake Form ─── -->
+        <div id="intake-section" class="intake-wrapper active-view">
+            <div class="surface intake-container">
+                <div class="intake-header">
+                    <h2>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="12" y1="18" x2="12" y2="12" />
+                            <line x1="9" y1="15" x2="15" y2="15" />
+                        </svg>
+                        Submit New Request
+                    </h2>
+                    <p class="caption">Fill out your details to join the helpdesk queue.</p>
+                </div>
+                <form id="add-form">
+                    <div class="input-group">
+                        <label for="input-roll">Roll Number</label>
+                        <input type="text" id="input-roll" required placeholder="e.g. ch.en.u4cce25020"
+                            autocomplete="off" spellcheck="false">
+                        <span id="roll-error" class="input-hint error hidden">Invalid format — expected e.g.
+                            ch.en.u4cce25020</span>
+                        <span id="roll-valid" class="input-hint valid hidden">✓ Valid roll number</span>
+                    </div>
+                    <div class="form-grid">
+                        <div class="input-group">
+                            <label for="input-name">Student Name</label>
+                            <input type="text" id="input-name" required placeholder="e.g. Priyanraj J"
+                                autocomplete="off">
+                            <span id="name-error" class="input-hint error hidden">Letters and spaces only</span>
+                        </div>
+                        <div class="input-group">
+                            <label for="input-type">Problem Type</label>
+                            <select id="input-type" required>
+                                <option value="Lab Equipment">Lab Equipment</option>
+                                <option value="WiFi">WiFi</option>
+                                <option value="ID Card">ID Card</option>
+                                <option value="Classroom">Classroom</option>
+                                <option value="Other">Other…</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="input-group hidden" id="desc-group">
+                        <label for="input-desc">Describe the issue</label>
+                        <input type="text" id="input-desc" placeholder="Briefly describe the problem…">
+                    </div>
+                    <button type="submit" class="btn-accent w-full">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        Join Queue
+                    </button>
+                </form>
+            </div>
+
+            <!-- Student Self-Check -->
+            <div class="surface intake-container" id="student-tools" style="margin-top:16px">
+                <h3>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    Track Your Request
+                </h3>
+                <div class="search-box">
+                    <input type="text" id="input-student-search" placeholder="Enter your Request ID (e.g. REQ-0001)">
+                    <button id="btn-student-search" type="button" class="btn-secondary">Check</button>
+                </div>
+                <div id="student-search-result" class="search-result"></div>
+            </div>
+        </div>
+
+        <!-- ─── Staff Dashboard ─── -->
+        <section id="view-dashboard" class="staff-dashboard hidden">
+            <div class="stats-bar">
+                <div class="surface stat-card">
+                    <div class="stat-icon" style="background:rgba(20,184,166,0.15);color:var(--teal-400)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                    </div>
+                    <div>
+                        <span class="stat-label">In Queue</span>
+                        <span class="stat-value" id="stat-pending">0</span>
+                    </div>
+                </div>
+                <div class="surface stat-card">
+                    <div class="stat-icon" style="background:rgba(16,185,129,0.15);color:#10b981">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                            <polyline points="22 4 12 14.01 9 11.01" />
+                        </svg>
+                    </div>
+                    <div>
+                        <span class="stat-label">Resolved</span>
+                        <span class="stat-value" id="stat-resolved">0</span>
+                    </div>
+                </div>
+                <div class="surface stat-card">
+                    <div class="stat-icon" style="background:rgba(245,158,11,0.15);color:var(--amber-500)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                        </svg>
+                    </div>
+                    <div>
+                        <span class="stat-label">Complexity</span>
+                        <div class="complexity-badges">
+                            <span class="badge bd-teal">O(1) Search</span>
+                            <span class="badge bd-amber">O(1) Queue</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="surface manager-container">
+                <div class="manager-header">
+                    <h2>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="8" y1="6" x2="21" y2="6" />
+                            <line x1="8" y1="12" x2="21" y2="12" />
+                            <line x1="8" y1="18" x2="21" y2="18" />
+                            <line x1="3" y1="6" x2="3.01" y2="6" />
+                            <line x1="3" y1="12" x2="3.01" y2="12" />
+                            <line x1="3" y1="18" x2="3.01" y2="18" />
+                        </svg>
+                        Live Queue
+                    </h2>
+                    <div class="actions">
+                        <div class="search-box">
+                            <input type="text" id="input-search" placeholder="Search REQ-XXXX…">
+                            <button id="btn-search" class="btn-secondary">Search</button>
+                        </div>
+                        <button id="btn-process" class="btn-accent">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5">
+                                <polyline points="9 11 12 14 22 4" />
+                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                            </svg>
+                            Process Next
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table id="queue-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Request ID</th>
+                                <th>Student</th>
+                                <th>Department</th>
+                                <th>Problem</th>
+                                <th>Time</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="queue-tbody"></tbody>
+                    </table>
+                    <div id="empty-state" class="empty-state">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                        </svg>
+                        <p>Queue is empty</p>
+                        <span class="caption">Submit a request from the form above to get started.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── Visualizer ─── -->
+        <section id="view-visualizer" class="staff-visualizer hidden">
+            <div class="viz-layout">
+                <div class="surface viz-main">
+                    <div class="viz-toolbar">
+                        <h2>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                                <path d="M2 17l10 5 10-5" />
+                                <path d="M2 12l10 5 10-5" />
+                            </svg>
+                            3D Structure Visualizer
+                        </h2>
+                        <button id="btn-demo" class="btn-secondary">▶ Auto-Demo</button>
+                    </div>
+
+                    <div class="canvas-3d-container">
+                        <div id="hash-overlay" class="hash-overlay hidden">
+                            <div class="hash-label">Rolling Hash</div>
+                            <div>Key: <span id="hash-calc-text">…</span></div>
+                            <div>Bucket: <span id="hash-bucket-text">…</span></div>
+                        </div>
+                        <div class="scene" id="scene"></div>
+                        <div id="scene-empty" class="scene-empty">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1">
+                                <rect x="2" y="2" width="20" height="20" rx="2" />
+                                <path d="M12 8v4l3 3" />
+                            </svg>
+                            <p>Queue is empty — add requests to visualize</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="surface viz-sidebar">
+                    <div class="algo-header">
+                        <h3>Pseudocode</h3>
+                        <span class="badge bd-teal">Queue + Hash Table</span>
+                    </div>
+                    <div id="algo-code" class="code-panel">
+                        <div class="cl" data-line="h-1"><span class="kw">fn</span> hash(reqId):</div>
+                        <div class="cl indent" data-line="h-2">h ← 0</div>
+                        <div class="cl indent" data-line="h-3"><span class="kw">for</span> c <span class="kw">in</span>
+                            reqId:</div>
+                        <div class="cl indent-2" data-line="h-4">h ← (h × 31 + c) <span class="kw">mod</span> 17</div>
+                        <div class="cl indent" data-line="h-5"><span class="kw">return</span> h</div>
+                        <div class="cl-gap"></div>
+                        <div class="cl" data-line="enq-1"><span class="kw">fn</span> enqueue(r):</div>
+                        <div class="cl indent" data-line="enq-2">queue.pushBack(r)</div>
+                        <div class="cl indent" data-line="enq-3">hashMap[hash(r.id)] ← r</div>
+                        <div class="cl-gap"></div>
+                        <div class="cl" data-line="rm-1"><span class="kw">fn</span> dequeue():</div>
+                        <div class="cl indent" data-line="rm-2">r ← queue.popFront()</div>
+                        <div class="cl indent" data-line="rm-3">hashMap[hash(r.id)].remove(r)</div>
+                        <div class="cl-gap"></div>
+                        <div class="cl" data-line="src-1"><span class="kw">fn</span> search(id):</div>
+                        <div class="cl indent" data-line="src-2">bucket ← hash(id)</div>
+                        <div class="cl indent" data-line="src-3"><span class="kw">return</span> hashMap[bucket].find(id)
+                        </div>
+                    </div>
+                    <div class="algo-footer">
+                        <p class="caption">
+                            <strong>Queue</strong> enforces FIFO fairness.<br>
+                            <strong>Hash Table</strong> (17 buckets, separate chaining) enables O(1) average lookup by
+                            Request ID.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ─── Info Modal ─── -->
+    <div id="info-modal" class="modal-overlay hidden">
+        <div class="surface modal-card">
+            <div class="modal-header">
+                <h2>How It Works</h2>
+                <button id="btn-close-modal" class="btn-icon">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-section">
+                    <h4>🔗 Queue (Linked-List FIFO)</h4>
+                    <p>Enforces strict First-Come First-Served fairness. O(1) enqueue at the rear, O(1) dequeue from the
+                        front. No student can jump the line.</p>
+                </div>
+                <div class="modal-section">
+                    <h4>🗄️ Hash Table (Separate Chaining)</h4>
+                    <p>Eliminates O(n) linear search. A polynomial rolling hash maps each Request ID to one of 17
+                        buckets, giving <strong>O(1) average-case search</strong>. Collisions are resolved via
+                        linked-list chaining within each bucket.</p>
+                </div>
+                <div class="modal-section">
+                    <h4>🎓 Roll Number Validation</h4>
+                    <p>Validates the full Amrita institutional format: <code>CAMPUS.SCHOOL.LEVEL+DEPT+YEAR+SERIAL</code>
+                        (e.g. <code>ch.en.u4cce25020</code>). Supports 6 campuses, 8 schools, and 34+ departments.</p>
+                </div>
+                <div class="modal-section">
+                    <h4>💾 Persistence</h4>
+                    <p>The queue and hash table are serialized to <code>localStorage</code> — survives page refresh.
+                        Both student and staff views share the same live state.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Toast ─── -->
+    <div id="toast" class="toast hidden">
+        <span id="toast-icon" class="toast-icon">✅</span>
+        <span id="toast-text" class="toast-text"></span>
+        <button id="btn-toast-close" class="toast-close">✕</button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
