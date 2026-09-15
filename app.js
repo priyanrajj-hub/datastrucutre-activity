@@ -512,7 +512,7 @@ UI.inName.addEventListener('input', e => {
 /*  Dashboard Sync                                 */
 /* ═══════════════════════════════════════════════ */
 
-function syncData() {
+function syncData(broadcast = true) {
     const items = CQ.toArray();
     UI.sPend.textContent = CQ.size;
     UI.sRes.textContent = resolvedSession;
@@ -603,6 +603,9 @@ function syncData() {
     }
 
     persist();
+    if (broadcast && typeof window.broadcastState === 'function') {
+        window.broadcastState();
+    }
 }
 
 /* ═══════════════════════════════════════════════ */
@@ -964,4 +967,74 @@ $('info-modal').addEventListener('click', e => {
 /* ═══════════════════════════════════════════════ */
 
 renderRouting();
-syncData();
+syncData(false); // Initial local load shouldn't broadcast
+
+/* ═══════════════════════════════════════════════ */
+/*  Network Sync (MQTT)                            */
+/* ═══════════════════════════════════════════════ */
+
+const MQTT_TOPIC = "amrita/sih/helpdesk/sync_v1";
+let mqttClient = null;
+let ignoreNextNetworkSync = false;
+
+function initNetwork() {
+    const clientId = "client_" + Math.random().toString(16).substr(2, 8);
+    // broker.emqx.io provides public WebSockets for MQTT
+    mqttClient = new Paho.MQTT.Client("broker.emqx.io", 8084, clientId);
+
+    mqttClient.onConnectionLost = (resp) => {
+        if (resp.errorCode !== 0) console.warn("MQTT Disconnected: " + resp.errorMessage);
+        setTimeout(initNetwork, 3000); // auto reconnect
+    };
+
+    mqttClient.onMessageArrived = (msg) => {
+        if (ignoreNextNetworkSync) {
+            ignoreNextNetworkSync = false;
+            return;
+        }
+        try {
+            const prevStateSize = CQ.size;
+            CQ = HelpdeskQueue.deserialize(msg.payloadString);
+
+            // Only re-sync UI if state actually changed
+            syncData(false); // Don't broadcast back
+
+            // Subtle toast
+            const t = document.getElementById('toast');
+            const tt = document.getElementById('toast-text');
+            if (t && tt && CQ.size !== prevStateSize) {
+                const toastIcon = document.getElementById('toast-icon');
+                if (toastIcon) toastIcon.textContent = '🔄';
+                tt.textContent = "Live sync updated";
+                t.className = 'toast success';
+                t.classList.remove('hidden');
+                setTimeout(() => t.classList.add('hidden'), 1500);
+            }
+        } catch (e) {
+            console.error("Failed to parse network sync data:", e);
+        }
+    };
+
+    mqttClient.connect({
+        useSSL: true,
+        onSuccess: () => {
+            console.log("Connected to MQTT Sync Network");
+            mqttClient.subscribe(MQTT_TOPIC);
+            // On connect as staff, broadcast state to sync any waiting students
+            if (hasStaffAccess) window.broadcastState();
+        },
+        onFailure: (err) => console.error("MQTT connect failed", err)
+    });
+}
+
+window.broadcastState = function () {
+    if (mqttClient && mqttClient.isConnected()) {
+        ignoreNextNetworkSync = true;
+        const msg = new Paho.MQTT.Message(CQ.serialize());
+        msg.destinationName = MQTT_TOPIC;
+        msg.retained = true;
+        mqttClient.send(msg);
+    }
+};
+
+initNetwork();
