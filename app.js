@@ -285,6 +285,8 @@ let resolvedSession = 0;
 let isAnimating = false;
 let currentRole = 'student';
 let hasStaffAccess = false;
+let currentVizMode = '3d';
+let rotX = 15, rotY = -10;
 
 function persist() { localStorage.setItem(STORAGE_KEY, CQ.serialize()); }
 
@@ -333,6 +335,8 @@ const UI = {
     btnStaffSrc: $('btn-search'),
     inStaffSrc: $('input-search'),
     scene: $('scene'),
+    canvas3D: document.querySelector('.canvas-3d-container'),
+    vizModes: document.getElementsByName('viz-mode'),
     scEmpty: $('scene-empty'),
     btnDemo: $('btn-demo'),
     hashOvl: $('hash-overlay'),
@@ -581,8 +585,9 @@ function syncData() {
             const b = document.createElement('div');
             b.className = 'hash-bucket';
             b.id = 'hb-' + i;
+            b.style.cssText = "flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; border: 1px solid var(--slate-600); border-radius: 4px; overflow: hidden; background: var(--bg-surface); min-width: 50px;";
             const valHtml = keys.length ? keys.join('<br>') : 'NULL';
-            b.innerHTML = `<div class="hb-idx">[ ${i} ]</div><div class="hb-val ${keys.length ? '' : 'null'}" style="font-size:0.55rem; line-height:1.2;">${valHtml}</div>`;
+            b.innerHTML = `<div class="hb-idx" style="background:var(--slate-800); width:100%; text-align:center; padding:2px;">[ ${i} ]</div><div class="hb-val ${keys.length ? '' : 'null'}" style="font-size:0.55rem; line-height:1.2; padding:6px; color:${keys.length ? 'var(--amber-400)' : 'var(--slate-500)'}; font-family:monospace;">${valHtml}</div>`;
             hArray.appendChild(b);
         }
     }
@@ -595,6 +600,7 @@ function syncData() {
 /* ═══════════════════════════════════════════════ */
 
 function sync3DScene(items) {
+    UI.scene.className = 'scene ' + 'mode-' + currentVizMode;
     UI.scene.innerHTML = '';
     if (!items.length) { UI.scEmpty.classList.remove('hidden'); return; }
     UI.scEmpty.classList.add('hidden');
@@ -611,7 +617,11 @@ function sync3DScene(items) {
         const x = (idx * spacingX) - centerOffset;
         const y = idx * -10;
         const z = idx * -25;
-        node.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
+        if (currentVizMode === '3d') {
+            node.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
+        } else {
+            node.style.transform = '';
+        }
 
         const isFront = idx === 0;
         const isRear = idx === items.length - 1;
@@ -642,7 +652,8 @@ function sync3DScene(items) {
     if (items.length > 0) {
         const headNode = document.createElement('div');
         headNode.className = 'ptr-node';
-        headNode.style.transform = `translate3d(${-centerOffset}px, -100px, 15px)`;
+        if (currentVizMode === '3d') headNode.style.transform = `translate3d(${-centerOffset}px, -100px, 15px)`;
+        else headNode.style.transform = '';
         headNode.innerHTML = `
             <div class="ptr-title">Head</div>
             <div class="ptr-target">${items[0].memAddr}</div>
@@ -653,7 +664,8 @@ function sync3DScene(items) {
         const tailX = (tailIdx * spacingX) - centerOffset;
         const tailNode = document.createElement('div');
         tailNode.className = 'ptr-node';
-        tailNode.style.transform = `translate3d(${tailX}px, -100px, ${tailIdx * -25 + 15}px)`;
+        if (currentVizMode === '3d') tailNode.style.transform = `translate3d(${tailX}px, -100px, ${tailIdx * -25 + 15}px)`;
+        else tailNode.style.transform = '';
         tailNode.innerHTML = `
             <div class="ptr-title rear">Tail</div>
             <div class="ptr-target rear">${items[tailIdx].memAddr}</div>
@@ -664,6 +676,47 @@ function sync3DScene(items) {
         UI.scene.appendChild(tailNode);
     }
 }
+
+/* ═══════════════════════════════════════════════ */
+/*  Visualizer Modes & Rotation                    */
+/* ═══════════════════════════════════════════════ */
+
+UI.vizModes.forEach(radio => {
+    radio.addEventListener('change', e => {
+        currentVizMode = e.target.value;
+        if (currentVizMode === '3d') {
+            UI.scene.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) scale(0.9)`;
+        } else {
+            UI.scene.style.transform = '';
+        }
+        syncData();
+    });
+});
+
+let isDragging3D = false;
+let lastMouse = { x: 0, y: 0 };
+
+UI.canvas3D.addEventListener('mousedown', e => {
+    if (currentVizMode !== '3d') return;
+    isDragging3D = true;
+    lastMouse = { x: e.clientX, y: e.clientY };
+    UI.scene.style.transition = 'none';
+});
+document.addEventListener('mousemove', e => {
+    if (!isDragging3D) return;
+    const deltaX = e.clientX - lastMouse.x;
+    const deltaY = e.clientY - lastMouse.y;
+    rotY += deltaX * 0.5;
+    rotX -= deltaY * 0.5;
+    UI.scene.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) scale(0.9)`;
+    lastMouse = { x: e.clientX, y: e.clientY };
+});
+document.addEventListener('mouseup', () => {
+    if (isDragging3D) {
+        isDragging3D = false;
+        UI.scene.style.transition = 'transform 0.8s cubic-bezier(0.33, 1, 0.68, 1)';
+    }
+});
 
 /* ═══════════════════════════════════════════════ */
 /*  Enqueue                                        */

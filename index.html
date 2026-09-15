@@ -320,9 +320,19 @@
                                 <path d="M2 17l10 5 10-5" />
                                 <path d="M2 12l10 5 10-5" />
                             </svg>
-                            3D Structure Visualizer
+                            Structure Visualizer
                         </h2>
-                        <button id="btn-demo" class="btn-secondary">▶ Auto-Demo</button>
+                        <div class="header-controls">
+                            <div class="segmented-control" id="viz-mode-toggles">
+                                <input type="radio" id="viz-1d" name="viz-mode" value="1d">
+                                <label for="viz-1d">1D</label>
+                                <input type="radio" id="viz-2d" name="viz-mode" value="2d">
+                                <label for="viz-2d">2D</label>
+                                <input type="radio" id="viz-3d" name="viz-mode" value="3d" checked>
+                                <label for="viz-3d">3D Rotate</label>
+                            </div>
+                            <button id="btn-demo" class="btn-secondary">▶ Auto-Demo</button>
+                        </div>
                     </div>
 
                     <div class="canvas-3d-container">
@@ -343,9 +353,13 @@
                     </div>
 
                     <!-- Core Hardware Memory Array -->
-                    <div class="hash-array-container">
-                        <div class="hash-array-title">Hardware Hash Map Buckets [0 ... 16]</div>
-                        <div class="hash-array" id="hash-array">
+                    <div class="hash-array-container"
+                        style="max-height: 120px; background: var(--slate-900); border-top: 1px solid var(--border-subtle); padding: 16px 24px;">
+                        <div class="hash-array-title"
+                            style="font-size: 0.7rem; font-weight: 700; color: var(--slate-400); margin-bottom: 12px; letter-spacing: 0.05em;">
+                            Hardware Hash Map Buckets [0 ... 16]</div>
+                        <div class="hash-array" id="hash-array"
+                            style="display: flex; flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 8px;">
                             <!-- JS Injected Buckets -->
                         </div>
                     </div>
