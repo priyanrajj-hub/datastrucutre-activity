@@ -548,7 +548,12 @@ async function enqueueToFirestore(rollNo, name, type, detail) {
     };
 
     try {
-        await db.collection('requests').doc(requestId).set(docData);
+        const writePromise = db.collection('requests').doc(requestId).set(docData);
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Network timeout — connection heavily delayed or stalled.')), 5000)
+        );
+
+        await Promise.race([writePromise, timeoutPromise]);
         return { ok: true, requestId: requestId };
     } catch (err) {
         console.error('Firestore write error:', err);
