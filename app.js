@@ -984,7 +984,8 @@ UI.addForm.addEventListener('submit', async e => {
         UI.rollValid.classList.add('hidden');
         showToast(`${res.requestId} submitted — you are #${CQ.size} in queue.`);
     } catch (err) {
-        showToast('Failed to submit request. Check your connection.', 'error');
+        console.error("ENQUEUE CRASH:", err);
+        showToast(`Error: ${err.message || err.toString()}`, 'error', 10000);
     }
 });
 

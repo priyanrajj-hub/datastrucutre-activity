@@ -35,49 +35,4 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// Enable offline persistence — if the network drops mid-write,
-// Firestore SDK will queue the write locally and retry when reconnected.
-// IMPORTANT: This can fail silently in Safari private browsing, older browsers,
-// or when multiple tabs are open. We surface the failure visibly.
 let offlinePersistenceEnabled = false;
-db.enablePersistence({ synchronizeTabs: true })
-    .then(() => { offlinePersistenceEnabled = true; })
-    .catch(err => {
-        offlinePersistenceEnabled = false;
-        if (err.code === 'failed-precondition') {
-            console.warn('[Helpdesk] Firestore persistence unavailable — multiple tabs open.');
-            // Show warning after DOM loads
-            document.addEventListener('DOMContentLoaded', () => {
-                const t = document.getElementById('toast');
-                if (t) {
-                    // Use a slight delay so it doesn't conflict with other init toasts
-                    setTimeout(() => {
-                        const icon = document.getElementById('toast-icon');
-                        const text = document.getElementById('toast-text');
-                        if (icon) icon.textContent = '⚠️';
-                        if (text) text.textContent = 'Offline mode unavailable — multiple tabs detected. Requests require an active connection.';
-                        t.className = 'toast error';
-                        t.classList.remove('hidden');
-                        setTimeout(() => t.classList.add('hidden'), 6000);
-                    }, 2000);
-                }
-            });
-        } else if (err.code === 'unimplemented') {
-            console.warn('[Helpdesk] Firestore persistence not supported in this browser.');
-            document.addEventListener('DOMContentLoaded', () => {
-                const t = document.getElementById('toast');
-                if (t) {
-                    setTimeout(() => {
-                        const icon = document.getElementById('toast-icon');
-                        const text = document.getElementById('toast-text');
-                        if (icon) icon.textContent = '⚠️';
-                        if (text) text.textContent = 'Offline mode not supported in this browser. Requests require an active connection.';
-                        t.className = 'toast error';
-                        t.classList.remove('hidden');
-                        setTimeout(() => t.classList.add('hidden'), 6000);
-                    }, 2000);
-                }
-            });
-        }
-    });
-
