@@ -9,12 +9,12 @@ window.fetch = async function (...args) {
 };
 
 /**
- * Campus Helpdesk Queue System — V5 (Production Polish)
+ * Campus Helpdesk Queue System — V7 (Firebase Cloud Sync)
  * 
  * Data Structures: Linked-List Queue + Hash Table (separate chaining)
  * 
- * Auth: UI-level demo gate (username: teacher, password: 12345)
- *       NOT production authentication.
+ * Auth: Firebase Authentication (Email/Password)
+ *       Staff user must be created in Firebase Console.
  * 
  * Roll Number: Structured Amrita format with named regex groups —
  *   CAMPUS.SCHOOL.LEVELDEPTYYNNN (e.g. ch.en.u4cce25020)
@@ -22,30 +22,14 @@ window.fetch = async function (...args) {
  * Duplicate Logic: Composite key (rollNo + problemType + detail)
  *   while request is pending. Same student CAN have multiple different issues.
  * 
- * Persistence: localStorage serialization survives page refresh.
+ * Persistence: Cloud Firestore — real-time sync across all devices.
+ *   In-memory Queue + Hash Table mirror Firestore state for visualization only.
  */
 
 /* ═══════════════════════════════════════════════ */
 /*  Amrita Roll Number Validator                   */
 /* ═══════════════════════════════════════════════ */
 
-/**
- * Structured regex with named capture groups for the Amrita Vishwa Vidyapeetham
- * institutional roll number format.
- *
- * Format: CAMPUS.SCHOOL.LEVELDEPTYYNNN (case-insensitive, normalized to lowercase)
- * Example: ch.en.u4cce25020
- *
- * ┌─ Campus (2 chars): CH=Chennai, CB=Coimbatore, AM=Amritapuri, BL=Bengaluru, MY=Mysuru, KE=Kerala
- * │  ┌─ School (2 chars): EN=Engineering, MB=Business, AS=Arts&Sciences, AY=Ayurveda, NU=Nursing, PH=Pharmacy, DE=Dentistry, LA=Law
- * │  │  ┌─ Level: U2–U6 = UG (2–6yr programs), P1–P3 = PG (1–3yr programs)
- * │  │  │  ┌─ Dept (3 chars): CSE, CCE, ECE, EEE, MEE, CIV, CHE, BME, AIE, ADE, MTE, AGR, BIO, ARC,
- * │  │  │  │              ELC, PHY, MAT, CHM, ENG, MBA, BBA, MCA, BCA, MSW, LLB, LLM, BDS, MDS,
- * │  │  │  │              BPH, MPH, BNS, MNS, BAM, MAM
- * │  │  │  │  ┌─ Year (2 digits): 25 = 2025
- * │  │  │  │  │  ┌─ Serial (3 digits)
- * ch.en.u4cce25020
- */
 const AMRITA_ROLL_REGEX = /^(?<campus>ch|cb|am|bl|my|ke)\.(?<school>en|mb|as|ay|nu|ph|de|la)\.(?<level>u[2-6]|p[1-3])(?<dept>cse|cce|ece|eee|mee|civ|che|bme|aie|ade|mte|agr|bio|arc|elc|phy|mat|chm|eng|mba|bba|mca|bca|msw|llb|llm|bds|mds|bph|mph|bns|mns|bam|mam)(?<year>\d{2})(?<serial>\d{3})$/i;
 
 function parseRollNumber(rollNo) {
@@ -183,11 +167,15 @@ class HelpdeskQueue {
         return null;
     }
 
-    enqueue(rollNo, name, type, detail) {
+    /**
+     * enqueue — local only (for visualization mirror + auto-demo).
+     * For real submissions, use enqueueToFirestore() below.
+     */
+    enqueue(rollNo, name, type, detail, overrideId) {
         const dup = this.hasDuplicate(rollNo, type, detail);
         if (dup) return { ok: false, dup };
 
-        const id = this._nextId();
+        const id = overrideId || this._nextId();
         const req = new Request(id, rollNo, name, type, detail);
 
         if (!this.rear) { this.front = this.rear = req; }
@@ -243,54 +231,13 @@ class HelpdeskQueue {
         while (c) { a.push(c); c = c.next; }
         return a;
     }
-
-    /* ── Persistence ── */
-    serialize() {
-        return JSON.stringify({
-            counter: this._counter,
-            items: this.toArray().map(r => ({
-                requestId: r.requestId, rollNumber: r.rollNumber,
-                studentName: r.studentName, problemType: r.problemType,
-                issueDetail: r.issueDetail, status: r.status,
-                timestamp: r.timestamp, department: r.department,
-                admissionYear: r.admissionYear, memAddr: r.memAddr
-            }))
-        });
-    }
-
-    static deserialize(json) {
-        const q = new HelpdeskQueue();
-        try {
-            const d = JSON.parse(json);
-            q._counter = d.counter || 1;
-            (d.items || []).forEach(i => {
-                const r = new Request(i.requestId, i.rollNumber, i.studentName, i.problemType, i.issueDetail);
-                r.status = i.status;
-                r.timestamp = i.timestamp;
-                if (i.department) r.department = i.department;
-                if (i.admissionYear) r.admissionYear = i.admissionYear;
-                if (i.memAddr) r.memAddr = i.memAddr;
-                if (!q.rear) { q.front = q.rear = r; }
-                else { q.rear.next = r; q.rear = r; }
-                q.ht.insert(r.requestId, r);
-                q.ht.insert(r.rollNumber, r);
-                q.ht.insert(r.studentName, r);
-                q.size++;
-            });
-        } catch (e) { console.warn('[Helpdesk] Failed to restore queue:', e); }
-        return q;
-    }
 }
 
 /* ═══════════════════════════════════════════════ */
 /*  App State                                      */
 /* ═══════════════════════════════════════════════ */
 
-const STORAGE_KEY = 'campus_helpdesk_queue_v5';
-let CQ = localStorage.getItem(STORAGE_KEY)
-    ? HelpdeskQueue.deserialize(localStorage.getItem(STORAGE_KEY))
-    : new HelpdeskQueue();
-
+let CQ = new HelpdeskQueue();
 let resolvedSession = 0;
 let isAnimating = false;
 let currentRole = 'student';
@@ -298,7 +245,8 @@ let hasStaffAccess = false;
 let currentVizMode = '3d';
 let rotX = 15, rotY = -10;
 
-function persist() { localStorage.setItem(STORAGE_KEY, CQ.serialize()); }
+// Global counter to generate request IDs — syncs with Firestore
+let globalRequestCounter = 1;
 
 /* ═══════════════════════════════════════════════ */
 /*  DOM References                                 */
@@ -438,27 +386,75 @@ function checkLoginFields() {
 UI.lUser.addEventListener('input', checkLoginFields);
 UI.lPass.addEventListener('input', checkLoginFields);
 
-// Credential gate
-UI.lForm.addEventListener('submit', e => {
-    e.preventDefault();
-    if (UI.lUser.value.trim() === 'teacher' && UI.lPass.value === '12345') {
+/* ═══════════════════════════════════════════════ */
+/*  Firebase Auth — Login / Logout / State         */
+/* ═══════════════════════════════════════════════ */
+
+// Listen for auth state changes (persists across refreshes)
+auth.onAuthStateChanged(user => {
+    if (user) {
         hasStaffAccess = true;
-        UI.lError.classList.add('hidden');
-        UI.lUser.value = ''; UI.lPass.value = '';
-        showToast('Authenticated — welcome to the staff dashboard.');
+        currentRole = 'staff';
+        UI.rSelect.value = 'staff';
         renderRouting();
-        syncData();
+        // Start real-time listener when staff is authenticated
+        startRealtimeListener();
     } else {
-        UI.lError.classList.remove('hidden');
+        hasStaffAccess = false;
+        // Stop listener if running
+        if (unsubscribeSnapshot) {
+            unsubscribeSnapshot();
+            unsubscribeSnapshot = null;
+        }
     }
+    renderRouting();
+    syncUI();
 });
 
+// Login form — Firebase Auth
+UI.lForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const email = UI.lUser.value.trim();
+    const password = UI.lPass.value;
+
+    UI.lSubmit.disabled = true;
+    UI.lError.classList.add('hidden');
+
+    auth.signInWithEmailAndPassword(email, password)
+        .then(() => {
+            UI.lUser.value = '';
+            UI.lPass.value = '';
+            showToast('Authenticated — welcome to the staff dashboard.');
+            // onAuthStateChanged handles the rest
+        })
+        .catch(err => {
+            console.error('Auth error:', err.code, err.message);
+            // Map Firebase error codes to user-friendly messages
+            const friendlyMessages = {
+                'auth/invalid-email': 'Invalid email format. Use e.g. teacher@campus.edu',
+                'auth/user-not-found': 'No staff account found for this email.',
+                'auth/wrong-password': 'Incorrect password. Please try again.',
+                'auth/invalid-credential': 'Invalid email or password. Please try again.',
+                'auth/too-many-requests': 'Too many failed attempts. Please wait a moment.',
+                'auth/network-request-failed': 'Network error — check your internet connection.',
+                'auth/invalid-login-credentials': 'Invalid email or password. Please try again.'
+            };
+            const msg = friendlyMessages[err.code] || 'Authentication failed. Please check your credentials.';
+            showToast(msg, 'error', 5000);
+            UI.lError.classList.remove('hidden');
+            UI.lSubmit.disabled = false;
+        });
+});
+
+// Logout — Firebase Auth
 UI.btnLogout.addEventListener('click', () => {
-    hasStaffAccess = false;
-    currentRole = 'student';
-    UI.rSelect.value = 'student';
-    showToast('Signed out successfully.');
-    renderRouting();
+    auth.signOut().then(() => {
+        hasStaffAccess = false;
+        currentRole = 'student';
+        UI.rSelect.value = 'student';
+        showToast('Signed out successfully.');
+        renderRouting();
+    });
 });
 
 /* ═══════════════════════════════════════════════ */
@@ -509,10 +505,212 @@ UI.inName.addEventListener('input', e => {
 });
 
 /* ═══════════════════════════════════════════════ */
-/*  Dashboard Sync                                 */
+/*  Firestore — Write (Enqueue)                    */
 /* ═══════════════════════════════════════════════ */
 
-function syncData(broadcast = true) {
+/**
+ * Generate the next request ID. Uses a counter that auto-increments.
+ * To avoid collisions across devices, we read the highest existing ID
+ * from Firestore on init and continue from there.
+ */
+async function getNextRequestId() {
+    const id = 'REQ-' + String(globalRequestCounter++).padStart(4, '0');
+    return id;
+}
+
+/**
+ * Write a new request to Firestore.
+ * Document ID = requestId (e.g. REQ-0001) to keep hash-table visualizer working.
+ */
+async function enqueueToFirestore(rollNo, name, type, detail) {
+    // Check local mirror for duplicates first
+    const dup = CQ.hasDuplicate(rollNo, type, detail);
+    if (dup) return { ok: false, dup };
+
+    const requestId = await getNextRequestId();
+
+    const docData = {
+        requestId: requestId,
+        rollNumber: rollNo,
+        studentName: name,
+        problemType: type,
+        issueDetail: detail || '',
+        status: 'queued',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        department: (() => {
+            const p = parseRollNumber(rollNo);
+            return p ? p.dept.toUpperCase() : '—';
+        })(),
+        admissionYear: (() => {
+            const p = parseRollNumber(rollNo);
+            return p ? '20' + p.year : '—';
+        })()
+    };
+
+    try {
+        await db.collection('requests').doc(requestId).set(docData);
+        return { ok: true, requestId: requestId };
+    } catch (err) {
+        console.error('Firestore write error:', err);
+        throw err;
+    }
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  Firestore — Dequeue / Remove                   */
+/* ═══════════════════════════════════════════════ */
+
+async function dequeueFromFirestore() {
+    if (CQ.size === 0) return null;
+    const frontReq = CQ.front;
+    try {
+        await db.collection('requests').doc(frontReq.requestId).update({
+            status: 'resolved',
+            resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        return frontReq;
+    } catch (err) {
+        console.error('Firestore dequeue error:', err);
+        throw err;
+    }
+}
+
+async function removeByIdFromFirestore(requestId) {
+    try {
+        await db.collection('requests').doc(requestId).update({
+            status: 'resolved',
+            resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        return true;
+    } catch (err) {
+        console.error('Firestore remove error:', err);
+        throw err;
+    }
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  Firestore — Real-Time Listener (onSnapshot)    */
+/* ═══════════════════════════════════════════════ */
+
+let unsubscribeSnapshot = null;
+
+/**
+ * Rebuild the in-memory HelpdeskQueue from Firestore snapshot data.
+ * This drives the visualization — Firestore is the source of truth.
+ */
+function rebuildQueueFromDocs(docs) {
+    const newQ = new HelpdeskQueue();
+
+    // Sort by createdAt (server timestamp), falling back to requestId order
+    const sorted = docs.sort((a, b) => {
+        const tsA = a.createdAt ? a.createdAt.toMillis() : 0;
+        const tsB = b.createdAt ? b.createdAt.toMillis() : 0;
+        if (tsA !== tsB) return tsA - tsB;
+        return a.requestId.localeCompare(b.requestId);
+    });
+
+    let maxCounter = 0;
+    sorted.forEach(d => {
+        // Extract numeric part of requestId to track counter
+        const num = parseInt(d.requestId.replace('REQ-', ''), 10);
+        if (num >= maxCounter) maxCounter = num + 1;
+
+        const req = new Request(d.requestId, d.rollNumber, d.studentName, d.problemType, d.issueDetail || '');
+        req.status = 'pending'; // only queued docs reach here
+        if (d.department) req.department = d.department;
+        if (d.admissionYear) req.admissionYear = d.admissionYear;
+
+        // Reconstruct timestamp from Firestore
+        if (d.createdAt && d.createdAt.toDate) {
+            req.timestamp = d.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        if (!newQ.rear) { newQ.front = newQ.rear = req; }
+        else { newQ.rear.next = req; newQ.rear = req; }
+
+        newQ.ht.insert(req.requestId, req);
+        newQ.ht.insert(req.rollNumber, req);
+        newQ.ht.insert(req.studentName, req);
+        newQ.size++;
+    });
+
+    // Sync global counter to avoid collisions
+    if (maxCounter > globalRequestCounter) {
+        globalRequestCounter = maxCounter;
+    }
+    newQ._counter = globalRequestCounter;
+
+    return newQ;
+}
+
+/**
+ * Start the Firestore onSnapshot real-time listener.
+ * Only staff users can list the collection (per security rules),
+ * so this is called after successful auth.
+ */
+function startRealtimeListener() {
+    if (unsubscribeSnapshot) return; // already listening
+
+    unsubscribeSnapshot = db.collection('requests')
+        .where('status', '==', 'queued')
+        .orderBy('createdAt', 'asc')
+        .onSnapshot(snapshot => {
+            const docs = [];
+            snapshot.forEach(doc => docs.push(doc.data()));
+
+            const prevSize = CQ.size;
+            CQ = rebuildQueueFromDocs(docs);
+            syncUI();
+
+            // Subtle sync toast
+            if (prevSize !== CQ.size && prevSize > 0) {
+                showToast('🔄 Live sync updated', 'success', 1500);
+            }
+        }, err => {
+            console.error('Firestore snapshot error:', err);
+        });
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  Firestore — Student Track Request              */
+/* ═══════════════════════════════════════════════ */
+
+/**
+ * Students can look up their own request by requestId (direct doc get).
+ * This uses the `get` permission (allowed for everyone).
+ */
+async function studentTrackRequest(searchVal) {
+    const upperVal = searchVal.toUpperCase();
+
+    // First try in-memory mirror (fast path — works if snapshot is active)
+    const local = CQ.search(upperVal);
+    if (local) {
+        return { found: true, req: local, position: CQ.getPosition(upperVal) };
+    }
+
+    // Fallback: query Firestore directly by doc ID
+    try {
+        const doc = await db.collection('requests').doc(upperVal).get();
+        if (doc.exists) {
+            const d = doc.data();
+            return {
+                found: true,
+                req: d,
+                position: d.status === 'queued' ? 'in queue' : 'resolved'
+            };
+        }
+    } catch (e) {
+        console.warn('Student track query failed:', e);
+    }
+
+    return { found: false };
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  Dashboard Sync (UI Only)                       */
+/* ═══════════════════════════════════════════════ */
+
+function syncUI() {
     const items = CQ.toArray();
     UI.sPend.textContent = CQ.size;
     UI.sRes.textContent = resolvedSession;
@@ -600,11 +798,6 @@ function syncData(broadcast = true) {
             b.innerHTML = `<div class="hb-idx" style="background:var(--slate-800); width:100%; text-align:center; padding:2px;">[ ${i} ]</div><div class="hb-val ${keys.length ? '' : 'null'}" style="font-size:0.55rem; line-height:1.2; padding:6px; color:${keys.length ? 'var(--amber-400)' : 'var(--slate-500)'}; font-family:monospace;">${valHtml}</div>`;
             hArray.appendChild(b);
         }
-    }
-
-    persist();
-    if (broadcast && typeof window.broadcastState === 'function') {
-        window.broadcastState();
     }
 }
 
@@ -702,7 +895,7 @@ UI.vizModes.forEach(radio => {
         } else {
             UI.scene.style.transform = '';
         }
-        syncData();
+        syncUI();
     });
 });
 
@@ -732,11 +925,11 @@ document.addEventListener('mouseup', () => {
 });
 
 /* ═══════════════════════════════════════════════ */
-/*  Enqueue                                        */
+/*  Enqueue (Firebase)                             */
 /* ═══════════════════════════════════════════════ */
 
 let lastSubmitTime = 0;
-UI.addForm.addEventListener('submit', e => {
+UI.addForm.addEventListener('submit', async e => {
     e.preventDefault();
     if (isAnimating) return;
 
@@ -762,37 +955,44 @@ UI.addForm.addEventListener('submit', e => {
     }
 
     hlLine(['enq-1', 'enq-2', 'enq-3', 'h-4'], 1200);
-    const res = CQ.enqueue(roll, name, type, detail);
 
-    if (!res.ok) {
-        const d = res.dup;
-        showToast(`You already have an open "${d.problemType}" request (${d.requestId}). Wait for it to be resolved.`, 'error', 6000);
-        return;
+    try {
+        const res = await enqueueToFirestore(roll, name, type, detail);
+
+        if (!res.ok) {
+            const d = res.dup;
+            showToast(`You already have an open "${d.problemType}" request (${d.requestId}). Wait for it to be resolved.`, 'error', 6000);
+            return;
+        }
+
+        // Add to local mirror for immediate feedback (will be overwritten by snapshot)
+        const localRes = CQ.enqueue(roll, name, type, detail, res.requestId);
+        syncUI();
+
+        // Animate if visualizer is visible
+        const n = document.getElementById('q3d-' + res.requestId);
+        if (n) {
+            const t = n.style.transform;
+            n.style.transform = '';
+            n.classList.add('anim-enqueue');
+            setTimeout(() => { n.classList.remove('anim-enqueue'); n.style.transform = t; }, 600);
+        }
+
+        UI.addForm.reset();
+        UI.descGrp.classList.add('hidden');
+        UI.inRoll.classList.remove('valid-field', 'error-field');
+        UI.rollValid.classList.add('hidden');
+        showToast(`${res.requestId} submitted — you are #${CQ.size} in queue.`);
+    } catch (err) {
+        showToast('Failed to submit request. Check your connection.', 'error');
     }
-
-    syncData();
-
-    // Animate if visualizer is visible
-    const n = document.getElementById('q3d-' + res.req.requestId);
-    if (n) {
-        const t = n.style.transform;
-        n.style.transform = '';
-        n.classList.add('anim-enqueue');
-        setTimeout(() => { n.classList.remove('anim-enqueue'); n.style.transform = t; }, 600);
-    }
-
-    UI.addForm.reset();
-    UI.descGrp.classList.add('hidden');
-    UI.inRoll.classList.remove('valid-field', 'error-field');
-    UI.rollValid.classList.add('hidden');
-    showToast(`${res.req.requestId} submitted — you are #${CQ.size} in queue.`);
 });
 
 /* ═══════════════════════════════════════════════ */
-/*  Dequeue & Remove                               */
+/*  Dequeue & Remove (Firebase)                    */
 /* ═══════════════════════════════════════════════ */
 
-UI.btnProcess.addEventListener('click', () => {
+UI.btnProcess.addEventListener('click', async () => {
     if (CQ.size === 0 || isAnimating) return;
     isAnimating = true;
     hlLine(['rm-1', 'rm-2', 'rm-3', 'h-4']);
@@ -802,27 +1002,43 @@ UI.btnProcess.addEventListener('click', () => {
 
     if (n && UI.tVis.checked) {
         n.classList.add('anim-dequeue');
-        setTimeout(() => finishDequeue(frontReq), 600);
+        setTimeout(async () => {
+            try {
+                await dequeueFromFirestore();
+                resolvedSession++;
+                // Local mirror will be updated by onSnapshot
+                CQ.dequeue();
+                syncUI();
+                showToast(`Resolved ${frontReq.requestId} — ${frontReq.studentName}`);
+            } catch (err) {
+                showToast('Failed to process request.', 'error');
+            }
+            isAnimating = false;
+        }, 600);
     } else {
-        finishDequeue(frontReq);
+        try {
+            await dequeueFromFirestore();
+            resolvedSession++;
+            CQ.dequeue();
+            syncUI();
+            showToast(`Resolved ${frontReq.requestId} — ${frontReq.studentName}`);
+        } catch (err) {
+            showToast('Failed to process request.', 'error');
+        }
+        isAnimating = false;
     }
 });
 
-function finishDequeue(frontReq) {
-    CQ.dequeue();
-    resolvedSession++;
-    isAnimating = false;
-    syncData();
-    showToast(`Resolved ${frontReq.requestId} — ${frontReq.studentName}`);
-}
-
-function staffRemoveById(id) {
+async function staffRemoveById(id) {
     if (isAnimating) return;
-    const removed = CQ.removeById(id);
-    if (removed) {
+    try {
+        await removeByIdFromFirestore(id);
         resolvedSession++;
-        syncData();
-        showToast(`Removed ${removed.requestId} from queue.`);
+        CQ.removeById(id);
+        syncUI();
+        showToast(`Removed ${id} from queue.`);
+    } catch (err) {
+        showToast('Failed to remove request.', 'error');
     }
 }
 
@@ -898,13 +1114,17 @@ UI.btnStaffSrc.addEventListener('click', async () => {
     isAnimating = false;
 });
 
-// Student self-check
-UI.btnStuSrc.addEventListener('click', () => {
+// Student self-check — uses Firestore doc get
+UI.btnStuSrc.addEventListener('click', async () => {
     const val = UI.inStuSrc.value.trim().toUpperCase();
     if (!val) return;
-    const req = CQ.search(val);
-    if (req) {
-        UI.stuRes.textContent = `${val} is at position ${CQ.getPosition(val)} of ${CQ.size} in the queue.`;
+
+    const result = await studentTrackRequest(val);
+    if (result.found) {
+        const pos = typeof result.position === 'number'
+            ? `position ${result.position} of ${CQ.size}`
+            : result.position;
+        UI.stuRes.textContent = `${val} — ${pos} in the queue.`;
         UI.stuRes.style.color = 'var(--accent)';
     } else {
         UI.stuRes.textContent = `${val} was not found in the queue.`;
@@ -925,29 +1145,66 @@ UI.btnDemo.addEventListener('click', async () => {
     const r1 = `ch.en.u4cse25${String(demoCount).padStart(3, '0')}`;
     const r2 = `ch.en.u4cce25${String(100 + demoCount).padStart(3, '0')}`;
 
-    // Enqueue node 1
-    const d1 = CQ.enqueue(r1, 'Alice Check', 'WiFi', '');
-    syncData();
-    const n1 = document.getElementById('q3d-' + d1.req.requestId);
-    if (n1) { n1.style.transform = ''; n1.classList.add('anim-enqueue'); }
-    await new Promise(r => setTimeout(r, 900));
+    // For auto-demo, write directly to Firestore if staff is authenticated,
+    // otherwise use local-only enqueue for visualization
+    if (hasStaffAccess) {
+        try {
+            await enqueueToFirestore(r1, 'Alice Check', 'WiFi', '');
+            // Wait briefly for onSnapshot to update
+            await new Promise(r => setTimeout(r, 1000));
 
-    // Enqueue node 2
-    const d2 = CQ.enqueue(r2, 'Bob Check', 'Other', 'Demo issue');
-    syncData();
-    const n2 = document.getElementById('q3d-' + d2.req.requestId);
-    if (n2) { n2.style.transform = ''; n2.classList.add('anim-enqueue'); }
-    await new Promise(r => setTimeout(r, 1000));
+            const n1 = document.getElementById('q3d-' + CQ.toArray().slice(-1)[0]?.requestId);
+            if (n1) { n1.style.transform = ''; n1.classList.add('anim-enqueue'); }
+            await new Promise(r => setTimeout(r, 900));
 
-    // Search Demo
-    isAnimating = true;
-    await animateHashSearch(d2.req.requestId);
-    isAnimating = false;
-    await new Promise(r => setTimeout(r, 500));
+            await enqueueToFirestore(r2, 'Bob Check', 'Other', 'Demo issue');
+            await new Promise(r => setTimeout(r, 1000));
 
-    // Dequeue front
-    UI.btnProcess.click();
-    setTimeout(() => { UI.btnDemo.disabled = false; }, 1000);
+            const n2 = document.getElementById('q3d-' + CQ.toArray().slice(-1)[0]?.requestId);
+            if (n2) { n2.style.transform = ''; n2.classList.add('anim-enqueue'); }
+            await new Promise(r => setTimeout(r, 1000));
+
+            // Search Demo
+            isAnimating = true;
+            const lastReq = CQ.toArray().slice(-1)[0];
+            if (lastReq) await animateHashSearch(lastReq.requestId);
+            isAnimating = false;
+            await new Promise(r => setTimeout(r, 500));
+
+            // Dequeue front
+            UI.btnProcess.click();
+            setTimeout(() => { UI.btnDemo.disabled = false; }, 1000);
+        } catch (err) {
+            showToast('Demo failed — check Firebase connection.', 'error');
+            UI.btnDemo.disabled = false;
+        }
+    } else {
+        // Local-only demo (student view, no Firestore write)
+        const d1 = CQ.enqueue(r1, 'Alice Check', 'WiFi', '');
+        syncUI();
+        const n1 = document.getElementById('q3d-' + d1.req.requestId);
+        if (n1) { n1.style.transform = ''; n1.classList.add('anim-enqueue'); }
+        await new Promise(r => setTimeout(r, 900));
+
+        const d2 = CQ.enqueue(r2, 'Bob Check', 'Other', 'Demo issue');
+        syncUI();
+        const n2 = document.getElementById('q3d-' + d2.req.requestId);
+        if (n2) { n2.style.transform = ''; n2.classList.add('anim-enqueue'); }
+        await new Promise(r => setTimeout(r, 1000));
+
+        // Search Demo
+        isAnimating = true;
+        await animateHashSearch(d2.req.requestId);
+        isAnimating = false;
+        await new Promise(r => setTimeout(r, 500));
+
+        // Dequeue front
+        CQ.dequeue();
+        resolvedSession++;
+        syncUI();
+        showToast('Demo complete (local only — login as staff for cloud sync).');
+        setTimeout(() => { UI.btnDemo.disabled = false; }, 1000);
+    }
 });
 
 /* ═══════════════════════════════════════════════ */
@@ -967,74 +1224,28 @@ $('info-modal').addEventListener('click', e => {
 /* ═══════════════════════════════════════════════ */
 
 renderRouting();
-syncData(false); // Initial local load shouldn't broadcast
+syncUI(); // Initial empty render
 
-/* ═══════════════════════════════════════════════ */
-/*  Network Sync (MQTT)                            */
-/* ═══════════════════════════════════════════════ */
-
-const MQTT_TOPIC = "amrita/sih/helpdesk/sync_v1";
-let mqttClient = null;
-let ignoreNextNetworkSync = false;
-
-function initNetwork() {
-    const clientId = "client_" + Math.random().toString(16).substr(2, 8);
-    // broker.emqx.io provides public WebSockets for MQTT
-    mqttClient = new Paho.MQTT.Client("broker.emqx.io", 8084, clientId);
-
-    mqttClient.onConnectionLost = (resp) => {
-        if (resp.errorCode !== 0) console.warn("MQTT Disconnected: " + resp.errorMessage);
-        setTimeout(initNetwork, 3000); // auto reconnect
-    };
-
-    mqttClient.onMessageArrived = (msg) => {
-        if (ignoreNextNetworkSync) {
-            ignoreNextNetworkSync = false;
-            return;
-        }
-        try {
-            const prevStateSize = CQ.size;
-            CQ = HelpdeskQueue.deserialize(msg.payloadString);
-
-            // Only re-sync UI if state actually changed
-            syncData(false); // Don't broadcast back
-
-            // Subtle toast
-            const t = document.getElementById('toast');
-            const tt = document.getElementById('toast-text');
-            if (t && tt && CQ.size !== prevStateSize) {
-                const toastIcon = document.getElementById('toast-icon');
-                if (toastIcon) toastIcon.textContent = '🔄';
-                tt.textContent = "Live sync updated";
-                t.className = 'toast success';
-                t.classList.remove('hidden');
-                setTimeout(() => t.classList.add('hidden'), 1500);
+/**
+ * On page load, try to fetch the highest existing request ID from Firestore
+ * to set the global counter correctly. This avoids ID collisions.
+ * Note: this uses a `get` (not `list`), fetching the single top document.
+ */
+(async function initCounter() {
+    try {
+        const snap = await db.collection('requests')
+            .orderBy('createdAt', 'desc')
+            .limit(1)
+            .get();
+        if (!snap.empty) {
+            const topId = snap.docs[0].data().requestId;
+            const num = parseInt(topId.replace('REQ-', ''), 10);
+            if (num >= globalRequestCounter) {
+                globalRequestCounter = num + 1;
             }
-        } catch (e) {
-            console.error("Failed to parse network sync data:", e);
         }
-    };
-
-    mqttClient.connect({
-        useSSL: true,
-        onSuccess: () => {
-            console.log("Connected to MQTT Sync Network");
-            mqttClient.subscribe(MQTT_TOPIC);
-            // On connect as staff, broadcast state to sync any waiting students
-            if (hasStaffAccess) window.broadcastState();
-        },
-        onFailure: (err) => console.error("MQTT connect failed", err)
-    });
-}
-
-window.broadcastState = function () {
-    if (mqttClient && mqttClient.isConnected()) {
-        ignoreNextNetworkSync = true;
-        const msg = new Paho.MQTT.Message(CQ.serialize());
-        msg.destinationName = MQTT_TOPIC;
-        msg.retained = true;
-        mqttClient.send(msg);
+    } catch (e) {
+        // If not authenticated or no docs, counter starts at 1 — fine
+        console.log('Counter init: starting from', globalRequestCounter);
     }
-};
-
-initNetwork();
+})();

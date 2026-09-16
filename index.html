@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src * https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com;">
     <title>Campus Helpdesk — Queue Management System</title>
     <meta name="description"
         content="Real-time campus helpdesk queue management system using FIFO Queue and Hash Table data structures.">
@@ -96,9 +97,9 @@
                         Invalid credentials. Please try again.
                     </div>
                     <div class="input-group">
-                        <label for="login-username">Username</label>
-                        <input type="text" id="login-username" autocomplete="username" placeholder="Enter username"
-                            required>
+                        <label for="login-username">Email</label>
+                        <input type="email" id="login-username" autocomplete="email"
+                            placeholder="e.g. teacher@campus.edu" required>
                     </div>
                     <div class="input-group">
                         <label for="login-password">Password</label>
@@ -429,9 +430,10 @@
                         (e.g. <code>ch.en.u4cce25020</code>). Supports 6 campuses, 8 schools, and 34+ departments.</p>
                 </div>
                 <div class="modal-section">
-                    <h4>💾 Persistence</h4>
-                    <p>The queue and hash table are serialized to <code>localStorage</code> — survives page refresh.
-                        Both student and staff views share the same live state.</p>
+                    <h4>☁️ Real-Time Cloud Sync</h4>
+                    <p>The queue is stored in <code>Cloud Firestore</code> — a real-time database. Requests sync
+                        instantly across ALL devices. A student submits from one device, the teacher sees it
+                        live on another — no manual refresh needed.</p>
                 </div>
             </div>
         </div>
@@ -444,9 +446,12 @@
         <button id="btn-toast-close" class="toast-close">✕</button>
     </div>
 
-    <!-- MQTT WebSockets Client -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
-    <script src="app.js?v=6.5"></script>
+    <!-- Firebase SDK (compat — works with vanilla JS, no bundler needed) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="app.js?v=7.0"></script>
 </body>
 
 </html>
