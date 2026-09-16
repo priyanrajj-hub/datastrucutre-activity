@@ -245,8 +245,7 @@ let hasStaffAccess = false;
 let currentVizMode = '3d';
 let rotX = 15, rotY = -10;
 
-// Global counter to generate request IDs — syncs with Firestore
-let globalRequestCounter = 1;
+// Decentralized ID generation means we no longer need a global counter
 
 /* ═══════════════════════════════════════════════ */
 /*  DOM References                                 */
@@ -267,6 +266,7 @@ const UI = {
     vDash: $('view-dashboard'),
     vVis: $('view-visualizer'),
     addForm: $('add-form'),
+    addSubmit: $('btn-submit'),
     inRoll: $('input-roll'),
     rollErr: $('roll-error'),
     rollValid: $('roll-valid'),
@@ -509,13 +509,16 @@ UI.inName.addEventListener('input', e => {
 /* ═══════════════════════════════════════════════ */
 
 /**
- * Generate the next request ID. Uses a counter that auto-increments.
- * To avoid collisions across devices, we read the highest existing ID
- * from Firestore on init and continue from there.
+ * Generate the next request ID. 
+ * Since students cannot read the global list (security rule),
+ * we generate a decentralized random ID to prevent collisions.
  */
 async function getNextRequestId() {
-    const id = 'REQ-' + String(globalRequestCounter++).padStart(4, '0');
-    return id;
+    // Generate a short 6-character random ID (e.g. REQ-A4F9B2)
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let rand = '';
+    for (let i = 0; i < 6; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    return 'REQ-' + rand;
 }
 
 /**
@@ -633,12 +636,6 @@ function rebuildQueueFromDocs(docs) {
         newQ.ht.insert(req.studentName, req);
         newQ.size++;
     });
-
-    // Sync global counter to avoid collisions
-    if (maxCounter > globalRequestCounter) {
-        globalRequestCounter = maxCounter;
-    }
-    newQ._counter = globalRequestCounter;
 
     return newQ;
 }
