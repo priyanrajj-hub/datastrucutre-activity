@@ -232,6 +232,7 @@ let resolvedSession = 0;
 let isAnimating = false;
 let currentRole = 'student';
 let hasStaffAccess = false;
+let initialSnapshotReceived = false;
 let currentVizMode = '3d';
 let rotX = 15, rotY = -10;
 
@@ -431,6 +432,12 @@ UI.lForm.addEventListener('submit', e => {
             };
             const msg = friendlyMessages[err.code] || 'Authentication failed. Please check your credentials.';
             showToast(msg, 'error', 5000);
+
+            // Try to find the text span inside the alert-error, otherwise overwrite
+            const textSpan = UI.lError.querySelector('span');
+            if (textSpan) textSpan.textContent = msg;
+            else UI.lError.textContent = msg;
+
             UI.lError.classList.remove('hidden');
             UI.lSubmit.disabled = false;
         });
@@ -642,6 +649,7 @@ function startRealtimeListener() {
         .where('status', '==', 'queued')
         .orderBy('createdAt', 'asc')
         .onSnapshot(snapshot => {
+            initialSnapshotReceived = true;
             const docs = [];
             snapshot.forEach(doc => docs.push(doc.data()));
 
@@ -707,6 +715,11 @@ function syncUI() {
     if (CQ.size === 0) {
         UI.table.classList.add('hidden');
         UI.empty.classList.remove('hidden');
+        if (hasStaffAccess && !initialSnapshotReceived) {
+            UI.empty.textContent = 'Loading live queue...';
+        } else {
+            UI.empty.textContent = 'Queue is empty.';
+        }
     } else {
         UI.table.classList.remove('hidden');
         UI.empty.classList.add('hidden');
@@ -1213,26 +1226,4 @@ $('info-modal').addEventListener('click', e => {
 renderRouting();
 syncUI(); // Initial empty render
 
-/**
- * On page load, try to fetch the highest existing request ID from Firestore
- * to set the global counter correctly. This avoids ID collisions.
- * Note: this uses a `get` (not `list`), fetching the single top document.
- */
-(async function initCounter() {
-    try {
-        const snap = await db.collection('requests')
-            .orderBy('createdAt', 'desc')
-            .limit(1)
-            .get();
-        if (!snap.empty) {
-            const topId = snap.docs[0].data().requestId;
-            const num = parseInt(topId.replace('REQ-', ''), 10);
-            if (num >= globalRequestCounter) {
-                globalRequestCounter = num + 1;
-            }
-        }
-    } catch (e) {
-        // If not authenticated or no docs, counter starts at 1 — fine
-        console.log('Counter init: starting from', globalRequestCounter);
-    }
-})();
+
