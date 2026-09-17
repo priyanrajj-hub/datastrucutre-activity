@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCalmpX4wgiyxkPzbuW5l0vQKjPjZEQKNI",
+            authDomain: "helpdesk-queue-b62d1.firebaseapp.com",
+            projectId: "helpdesk-queue-b62d1",
+            storageBucket: "helpdesk-queue-b62d1.firebasestorage.app",
+            messagingSenderId: "722695771880",
+            appId: "1:722695771880:web:b6680534f1db00a35fdb5d",
+            measurementId: "G-HPKJSJ6RCE"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        db.settings({
+            experimentalForceLongPolling: true,
+            experimentalAutoDetectLongPolling: false,
+            merge: true
+        });
+        
+        console.log("Starting write...");
+        db.collection('requests').doc('TEST-125').set({
+            test: true,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        }).then(() => {
+            console.log("WRITE SUCCESS");
+        }).catch(err => {
+            console.log("WRITE CRASH:", err);
+        });
+    </script>
+</body>
+</html>

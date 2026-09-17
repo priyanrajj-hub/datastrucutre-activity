@@ -548,7 +548,16 @@ async function enqueueToFirestore(rollNo, name, type, detail) {
     };
 
     try {
-        await db.collection('requests').doc(requestId).set(docData);
+        console.log('[Helpdesk] Attempting to write to Firestore...', docData);
+
+        const writePromise = db.collection('requests').doc(requestId).set(docData);
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Firebase SDK hanging. Your Wi-Fi firewall or Adblocker is blocking firestore.googleapis.com.')), 5000);
+        });
+
+        await Promise.race([writePromise, timeoutPromise]);
+
+        console.log('[Helpdesk] Write successful!');
         return { ok: true, requestId: requestId };
     } catch (err) {
         console.error('[Helpdesk] Firestore write failed:', err.code, err.message, err);
