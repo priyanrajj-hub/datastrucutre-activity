@@ -1,6 +1,6 @@
 const firebase = require('firebase/compat/app');
 require('firebase/compat/firestore');
-require('firebase/compat/auth'); // Require auth module
+require('firebase/compat/auth');
 
 const firebaseConfig = {
     apiKey: "AIzaSyCalmpX4wgiyxkPzbuW5l0vQKjPjZEQKNI",
@@ -11,12 +11,15 @@ const firebaseConfig = {
     appId: "1:722695771880:web:b6680534f1db00a35fdb5d"
 };
 
+let app;
 if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
+    app = firebase.initializeApp(firebaseConfig);
 }
 
 const db = firebase.firestore();
 const auth = firebase.auth();
+
+let authPromise = null;
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') {
@@ -24,14 +27,15 @@ export default async function handler(req, res) {
     }
 
     try {
-        // Authenticate the serverless node runner so we bypass the `allow list: if request.auth != null` security rule
+        // Cache the anonymous authentication globally across Vercel lambda warm-starts
+        // This avoids hammering the Firebase Auth API and triggering rate limits.
         if (!auth.currentUser) {
-            await auth.signInWithEmailAndPassword('staff@amrita.edu', 'helpdesk2024');
+            if (!authPromise) {
+                authPromise = auth.signInAnonymously();
+            }
+            await authPromise;
         }
 
-        // Fetch all documents. We avoid using compound where() + orderBy() queries
-        // to completely bypass the manual Firebase Composite Index requirement which
-        // currently crashes the read endpoint.
         const snapshot = await db.collection('requests').get();
 
         let docs = [];
@@ -43,7 +47,6 @@ export default async function handler(req, res) {
             docs.push({ id: doc.id, ...data });
         });
 
-        // Filter and sort securely in Node runtime memory
         docs = docs
             .filter(d => d.status === 'queued')
             .sort((a, b) => {
@@ -55,6 +58,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, docs });
     } catch (error) {
         console.error('[API Proxy] Firestore error:', error);
+        authPromise = null; // Reset on failure
         return res.status(500).json({ error: error.message, code: error.code });
     }
 }
