@@ -1,0 +1,12 @@
+STARTING GOTO
+NETWORK: 200 https://datastrucutre-activity.vercel.app/
+NETWORK: 200 https://datastrucutre-activity.vercel.app/style.css?v=6.5
+NETWORK: 200 https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js
+NETWORK: 200 https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap
+NETWORK: 200 https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js
+NETWORK: 200 https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2
+NETWORK: 200 https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js
+NETWORK: 200 https://datastrucutre-activity.vercel.app/firebase-config.js?v=11.0
+NETWORK: 200 https://datastrucutre-activity.vercel.app/app.js?v=11.0
+STARTING TYPE
+CLICKING SUBMIT

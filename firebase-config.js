@@ -35,4 +35,12 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+// IMPORTANT: Force HTTP Long Polling instead of WebSockets.
+// College networks (like Amrita) often aggressively block standard WSS ports,
+// causing the Firebase SDK to hang infinitely pending connection.
+db.settings({
+    experimentalForceLongPolling: true,
+    merge: true
+});
+
 let offlinePersistenceEnabled = false;
