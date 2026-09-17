@@ -658,27 +658,59 @@ function rebuildQueueFromDocs(docs) {
  * so this is called after successful auth.
  */
 function startRealtimeListener() {
-    if (unsubscribeSnapshot) return; // already listening
+    if (unsubscribeSnapshot) unsubscribeSnapshot();
 
-    unsubscribeSnapshot = db.collection('requests')
-        .where('status', '==', 'queued')
-        .orderBy('createdAt', 'asc')
-        .onSnapshot(snapshot => {
-            initialSnapshotReceived = true;
-            const docs = [];
-            snapshot.forEach(doc => docs.push(doc.data()));
+    const fetchQueue = async () => {
+        try {
+            const res = await fetch('/api/queue');
+            if (!res.ok) return;
+            const json = await res.json();
 
-            const prevSize = CQ.size;
-            CQ = rebuildQueueFromDocs(docs);
+            // Rebuild queue from scratch
+            CQ = new HelpdeskQueue();
+            HashTable.buckets = new Array(17).fill(null);
+
+            json.docs.forEach(data => {
+                const req = new Request(data.requestId, data.rollNumber, data.studentName, data.problemType, data.issueDetail);
+                if (data.status === 'resolved') req.status = 'resolved';
+
+                if (!CQ.front) {
+                    CQ.front = Object.assign(req, { prev: null });
+                    CQ.rear = CQ.front;
+                } else {
+                    CQ.rear.next = Object.assign(req, { prev: CQ.rear });
+                    CQ.rear = CQ.rear.next;
+                }
+                CQ.size++;
+
+                // Mirror to HashTable
+                const h = HashTable._hash(req.requestId);
+                const n = { value: req, next: null };
+                if (!HashTable.buckets[h]) HashTable.buckets[h] = n;
+                else {
+                    let cur = HashTable.buckets[h];
+                    while (cur.next) cur = cur.next;
+                    cur.next = n;
+                }
+            });
+
             syncUI();
 
-            // Subtle sync toast
-            if (prevSize !== CQ.size && prevSize > 0) {
-                showToast('🔄 Live sync updated', 'success', 1500);
+            if (!initialSnapshotReceived) {
+                initialSnapshotReceived = true;
+                if (UI.sPend) UI.sPend.parentElement.classList.remove('animate-pulse');
             }
-        }, err => {
-            console.error('Firestore snapshot error:', err);
-        });
+        } catch (err) {
+            console.error('[Helpdesk] Proxy sync error:', err);
+        }
+    };
+
+    // Run immediately, then poll every 3 seconds
+    fetchQueue();
+    const intervalId = setInterval(fetchQueue, 3000);
+
+    // Wire up unsubscribe to stop polling
+    unsubscribeSnapshot = () => clearInterval(intervalId);
 }
 
 /* ═══════════════════════════════════════════════ */
