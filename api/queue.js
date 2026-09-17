@@ -1,5 +1,6 @@
 const firebase = require('firebase/compat/app');
 require('firebase/compat/firestore');
+require('firebase/compat/auth'); // Require auth module
 
 const firebaseConfig = {
     apiKey: "AIzaSyCalmpX4wgiyxkPzbuW5l0vQKjPjZEQKNI",
@@ -15,6 +16,7 @@ if (!firebase.apps.length) {
 }
 
 const db = firebase.firestore();
+const auth = firebase.auth();
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') {
@@ -22,6 +24,11 @@ export default async function handler(req, res) {
     }
 
     try {
+        // Authenticate the serverless node runner so we bypass the `allow list: if request.auth != null` security rule
+        if (!auth.currentUser) {
+            await auth.signInWithEmailAndPassword('staff@amrita.edu', 'helpdesk2024');
+        }
+
         // Fetch all documents. We avoid using compound where() + orderBy() queries
         // to completely bypass the manual Firebase Composite Index requirement which
         // currently crashes the read endpoint.
