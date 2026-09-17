@@ -40,6 +40,7 @@ const db = firebase.firestore();
 // causing the Firebase SDK to hang infinitely pending connection.
 db.settings({
     experimentalForceLongPolling: true,
+    experimentalAutoDetectLongPolling: false,
     merge: true
 });
 
