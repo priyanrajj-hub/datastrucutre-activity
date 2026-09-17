@@ -579,26 +579,40 @@ async function dequeueFromFirestore() {
     if (CQ.size === 0) return null;
     const frontReq = CQ.front;
     try {
-        await db.collection('requests').doc(frontReq.requestId).update({
-            status: 'resolved',
-            resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+        console.log('[Helpdesk] Proxying dequeue through Vercel Backend...', frontReq.requestId);
+
+        const response = await fetch('/api/dequeue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId: frontReq.requestId })
         });
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Serverless dequeue proxy failed');
+
         return frontReq;
     } catch (err) {
-        console.error('Firestore dequeue error:', err);
+        console.error('[Helpdesk] Proxy dequeue error:', err);
         throw err;
     }
 }
 
 async function removeByIdFromFirestore(requestId) {
     try {
-        await db.collection('requests').doc(requestId).update({
-            status: 'resolved',
-            resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+        console.log('[Helpdesk] Proxying removal through Vercel Backend...', requestId);
+
+        const response = await fetch('/api/dequeue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId })
         });
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Serverless removal proxy failed');
+
         return true;
     } catch (err) {
-        console.error('Firestore remove error:', err);
+        console.error('[Helpdesk] Proxy remove error:', err);
         throw err;
     }
 }
@@ -730,19 +744,17 @@ async function studentTrackRequest(searchVal) {
         return { found: true, req: local, position: CQ.getPosition(upperVal) };
     }
 
-    // Fallback: query Firestore directly by doc ID
+    // Fallback: query Firestore securely through the proxy endpoint
     try {
-        const doc = await db.collection('requests').doc(upperVal).get();
-        if (doc.exists) {
-            const d = doc.data();
-            return {
-                found: true,
-                req: d,
-                position: d.status === 'queued' ? 'in queue' : 'resolved'
-            };
+        console.log('[Helpdesk] Proxying track request through Vercel Backend...', upperVal);
+        const response = await fetch(`/api/track?requestId=${upperVal}`);
+        const result = await response.json();
+
+        if (result.found) {
+            return result;
         }
     } catch (e) {
-        console.warn('Student track query failed:', e);
+        console.error('Student track query failed via proxy:', e);
     }
 
     return { found: false };

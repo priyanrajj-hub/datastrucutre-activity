@@ -2,26 +2,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /requests/{requestId} {
-      // Anyone can CREATE a request — with shape validation
-      // Ensures required fields exist, status must be "queued", and basic types
-      allow create: if request.resource.data.status == "queued"
-        && request.resource.data.keys().hasAll(
-             ['requestId','rollNumber','studentName','problemType','status','createdAt'])
-        && request.resource.data.rollNumber is string
-        && request.resource.data.studentName is string && request.resource.data.studentName.size() <= 60
-        && request.resource.data.problemType is string && request.resource.data.problemType.size() <= 30
-        && (!('issueDetail' in request.resource.data) || (request.resource.data.issueDetail is string && request.resource.data.issueDetail.size() <= 200))
-        && request.resource.data.createdAt == request.time;
+      
+      // Because the entire architecture has shifted to a Vercel Proxy backend to bypass Wi-Fi DPIs,
+      // all Firebase reads/writes are channeled exclusively through the authenticated Vercel Node runtime.
+      
+      // We can completely lock down the client SDK, permanently fixing the security loophole
+      // (a student authenticating anonymously and manually submitting an UPDATE flag).
 
-      // Anyone can GET a single doc by known requestId (Track Your Request)
-      // Students receive their requestId after submitting — they use it to look up status.
+      // ONLY authenticated staff running inside the stealth Vercel backend proxy can mutate or list
+      allow create, update, delete, list: if request.auth != null && request.auth.token.email == 'staff@amrita.edu';
+      
+      // The single track request endpoint can still query directly by ID if needed (though proxied as well)
       allow get: if true;
-
-      // Only authenticated staff can LIST the full collection (Live Queue dashboard)
-      allow list: if request.auth != null;
-
-      // Only authenticated staff can update (resolve) or delete requests
-      allow update, delete: if request.auth != null;
     }
   }
 }
