@@ -27,11 +27,12 @@ export default async function handler(req, res) {
     }
 
     try {
-        // Cache the anonymous authentication globally across Vercel lambda warm-starts
-        // This avoids hammering the Firebase Auth API and triggering rate limits.
+        // Cache the email authentication globally across Vercel lambda warm-starts!
+        // This avoids hammering the Firebase Auth API every 3 seconds inside the polling loop,
+        // which triggers strict rate limits.
         if (!auth.currentUser) {
             if (!authPromise) {
-                authPromise = auth.signInAnonymously();
+                authPromise = auth.signInWithEmailAndPassword('staff@amrita.edu', 'helpdesk2024');
             }
             await authPromise;
         }
