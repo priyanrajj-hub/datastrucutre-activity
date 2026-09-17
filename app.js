@@ -548,19 +548,25 @@ async function enqueueToFirestore(rollNo, name, type, detail) {
     };
 
     try {
-        console.log('[Helpdesk] Attempting to write to Firestore...', docData);
+        console.log('[Helpdesk] Proxying write through Vercel Backend...', docData);
 
-        const writePromise = db.collection('requests').doc(requestId).set(docData);
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Firebase SDK hanging. Your Wi-Fi firewall or Adblocker is blocking firestore.googleapis.com.')), 5000);
+        // Use a standard fetch request to the Vercel serverless endpoint to bypass HTTP DPI filters
+        const response = await fetch('/api/enqueue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId, docData })
         });
 
-        await Promise.race([writePromise, timeoutPromise]);
+        const result = await response.json();
 
-        console.log('[Helpdesk] Write successful!');
+        if (!response.ok) {
+            throw new Error(result.error || 'Serverless proxy failed');
+        }
+
+        console.log('[Helpdesk] Write successful via proxy!');
         return { ok: true, requestId: requestId };
     } catch (err) {
-        console.error('[Helpdesk] Firestore write failed:', err.code, err.message, err);
+        console.error('[Helpdesk] Proxy write failed:', err);
         throw err;
     }
 }
