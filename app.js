@@ -548,15 +548,10 @@ async function enqueueToFirestore(rollNo, name, type, detail) {
     };
 
     try {
-        const writePromise = db.collection('requests').doc(requestId).set(docData);
-        const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Network timeout — connection heavily delayed or stalled.')), 5000)
-        );
-
-        await Promise.race([writePromise, timeoutPromise]);
+        await db.collection('requests').doc(requestId).set(docData);
         return { ok: true, requestId: requestId };
     } catch (err) {
-        console.error('Firestore write error:', err);
+        console.error('[Helpdesk] Firestore write failed:', err.code, err.message, err);
         throw err;
     }
 }
@@ -989,8 +984,8 @@ UI.addForm.addEventListener('submit', async e => {
         UI.rollValid.classList.add('hidden');
         showToast(`${res.requestId} submitted — you are #${CQ.size} in queue.`);
     } catch (err) {
-        console.error("ENQUEUE CRASH:", err);
-        showToast(`Error: ${err.message || err.toString()}`, 'error', 10000);
+        console.error('[Helpdesk] Firestore write failed:', err.code, err.message);
+        showToast(`Submit failed: ${err.code || err.message}`, 'error', 10000);
     }
 });
 
