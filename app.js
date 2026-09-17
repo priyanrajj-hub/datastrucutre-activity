@@ -531,12 +531,11 @@ async function enqueueToFirestore(rollNo, name, type, detail) {
 
     const docData = {
         requestId: requestId,
-        rollNumber: rollNo,
+        rollNumber: rollNo.toUpperCase(),
         studentName: name,
         problemType: type,
-        issueDetail: detail || '',
+        issueDetail: detail,
         status: 'queued',
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         department: (() => {
             const p = parseRollNumber(rollNo);
             return p ? p.dept.toUpperCase() : '—';
@@ -548,22 +547,33 @@ async function enqueueToFirestore(rollNo, name, type, detail) {
     };
 
     try {
-        console.log('[Helpdesk] Proxying write through Vercel Backend...', docData);
+        console.log('[Helpdesk] Processing Native REST write...', docData);
 
-        // Use a standard fetch request to the Vercel serverless endpoint to bypass HTTP DPI filters
-        const response = await fetch('/api/enqueue', {
+        const projectId = 'helpdesk-queue-b62d1';
+        const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/requests?documentId=${requestId}`;
+
+        const response = await fetch(docUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestId, docData })
+            body: JSON.stringify({
+                fields: {
+                    requestId: { stringValue: docData.requestId },
+                    rollNumber: { stringValue: docData.rollNumber },
+                    studentName: { stringValue: docData.studentName },
+                    problemType: { stringValue: docData.problemType },
+                    issueDetail: { stringValue: docData.issueDetail || "" },
+                    status: { stringValue: docData.status },
+                    department: { stringValue: docData.department },
+                    admissionYear: { stringValue: docData.admissionYear },
+                    createdAt: { timestampValue: new Date().toISOString() }
+                }
+            })
         });
 
         const result = await response.json();
+        if (!response.ok) throw new Error(result.error?.message || 'Native write failed');
 
-        if (!response.ok) {
-            throw new Error(result.error || 'Serverless proxy failed');
-        }
-
-        console.log('[Helpdesk] Write successful via proxy!');
+        console.log('[Helpdesk] Write successful via Native REST!');
         return { ok: true, requestId: requestId };
     } catch (err) {
         console.error('[Helpdesk] Proxy write failed:', err);
@@ -579,16 +589,33 @@ async function dequeueFromFirestore() {
     if (CQ.size === 0) return null;
     const frontReq = CQ.front;
     try {
-        console.log('[Helpdesk] Proxying dequeue through Vercel Backend...', frontReq.requestId);
+        console.log('[Helpdesk] Processing Dequeue manually via Native REST...');
 
-        const response = await fetch('/api/dequeue', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestId: frontReq.requestId })
+        // Ensure there is an active Firebase Staff session to satisfy rules!
+        const currentUser = firebase.auth().currentUser;
+        if (!currentUser) throw new Error('You must be logged in as Staff to process requests.');
+        const token = await currentUser.getIdToken();
+
+        const projectId = 'helpdesk-queue-b62d1';
+        const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/requests/${frontReq.requestId}?updateMask.fieldPaths=status&updateMask.fieldPaths=resolvedAt`;
+
+        const response = await fetch(docUrl, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: `projects/${projectId}/databases/(default)/documents/requests/${frontReq.requestId}`,
+                fields: {
+                    status: { stringValue: 'resolved' },
+                    resolvedAt: { timestampValue: new Date().toISOString() }
+                }
+            })
         });
 
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Serverless dequeue proxy failed');
+        if (!response.ok) throw new Error(result.error?.message || 'REST Dequeue failed');
 
         return frontReq;
     } catch (err) {
@@ -599,16 +626,33 @@ async function dequeueFromFirestore() {
 
 async function removeByIdFromFirestore(requestId) {
     try {
-        console.log('[Helpdesk] Proxying removal through Vercel Backend...', requestId);
+        console.log('[Helpdesk] Processing Remove manually via Native REST...');
 
-        const response = await fetch('/api/dequeue', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestId })
+        // Ensure there is an active Firebase Staff session to satisfy rules!
+        const currentUser = firebase.auth().currentUser;
+        if (!currentUser) throw new Error('You must be logged in as Staff to remove requests.');
+        const token = await currentUser.getIdToken();
+
+        const projectId = 'helpdesk-queue-b62d1';
+        const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/requests/${requestId}?updateMask.fieldPaths=status&updateMask.fieldPaths=resolvedAt`;
+
+        const response = await fetch(docUrl, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: `projects/${projectId}/databases/(default)/documents/requests/${requestId}`,
+                fields: {
+                    status: { stringValue: 'resolved' },
+                    resolvedAt: { timestampValue: new Date().toISOString() }
+                }
+            })
         });
 
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Serverless removal proxy failed');
+        if (!response.ok) throw new Error(result.error?.message || 'REST Remove failed');
 
         return true;
     } catch (err) {
@@ -676,15 +720,48 @@ function startRealtimeListener() {
 
     const fetchQueue = async () => {
         try {
-            const res = await fetch('/api/queue');
+            const currentUser = firebase.auth().currentUser;
+            if (!currentUser) return;
+            const token = await currentUser.getIdToken();
+            const projectId = 'helpdesk-queue-b62d1';
+
+            const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/requests`;
+            const res = await fetch(docUrl, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
             if (!res.ok) return;
             const json = await res.json();
+            const rawDocs = json.documents || [];
+
+            // Helper to parse complex Firestore REST value types
+            const parseREST = (doc) => {
+                if (!doc || !doc.fields) return {};
+                const obj = {};
+                for (const [key, val] of Object.entries(doc.fields)) {
+                    if (val.stringValue !== undefined) obj[key] = val.stringValue;
+                    else if (val.timestampValue !== undefined) obj[key] = val.timestampValue;
+                    else if (val.integerValue !== undefined) obj[key] = parseInt(val.integerValue, 10);
+                    else if (val.booleanValue !== undefined) obj[key] = val.booleanValue;
+                }
+                obj.id = doc.name.split('/').pop();
+                return obj;
+            };
+
+            let docs = rawDocs.map(parseREST);
+            docs = docs
+                .filter(d => d.status === 'queued')
+                .sort((a, b) => {
+                    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    return timeA - timeB;
+                });
 
             // Rebuild queue from scratch
             CQ = new HelpdeskQueue();
             HashTable.buckets = new Array(17).fill(null);
 
-            json.docs.forEach(data => {
+            docs.forEach(data => {
                 const req = new Request(data.requestId, data.rollNumber, data.studentName, data.problemType, data.issueDetail);
                 if (data.status === 'resolved') req.status = 'resolved';
 
@@ -744,14 +821,22 @@ async function studentTrackRequest(searchVal) {
         return { found: true, req: local, position: CQ.getPosition(upperVal) };
     }
 
-    // Fallback: query Firestore securely through the proxy endpoint
+    // Fallback: query Firestore securely through Native REST Native endpoints
     try {
-        console.log('[Helpdesk] Proxying track request through Vercel Backend...', upperVal);
-        const response = await fetch(`/api/track?requestId=${upperVal}`);
-        const result = await response.json();
+        console.log('[Helpdesk] Fetching native document tracking...', upperVal);
 
-        if (result.found) {
-            return result;
+        const projectId = 'helpdesk-queue-b62d1';
+        const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/requests/${upperVal}`;
+        const response = await fetch(docUrl);
+
+        if (response.ok) {
+            const doc = await response.json();
+            if (doc.fields) {
+                return {
+                    found: true,
+                    position: doc.fields.status?.stringValue === 'queued' ? 'in queue (position hidden)' : 'resolved'
+                };
+            }
         }
     } catch (e) {
         console.error('Student track query failed via proxy:', e);

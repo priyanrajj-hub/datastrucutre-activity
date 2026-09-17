@@ -3,16 +3,17 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /requests/{requestId} {
       
-      // Because the entire architecture has shifted to a Vercel Proxy backend to bypass Wi-Fi DPIs,
-      // all Firebase reads/writes are channeled exclusively through the authenticated Vercel Node runtime.
-      
-      // We can completely lock down the client SDK, permanently fixing the security loophole
-      // (a student authenticating anonymously and manually submitting an UPDATE flag).
+      // Students (unauthenticated) can create exactly governed queue items
+      allow create: if request.resource.data.status == "queued"
+        && request.resource.data.keys().hasAll(['requestId', 'rollNumber', 'studentName', 'problemType', 'status', 'createdAt'])
+        && request.resource.data.rollNumber is string
+        && request.resource.data.studentName is string && request.resource.data.studentName.size() <= 60
+        && request.resource.data.problemType is string && request.resource.data.problemType.size() <= 30;
 
-      // ONLY authenticated staff running inside the stealth Vercel backend proxy can mutate or list
-      allow create, update, delete, list: if request.auth != null && request.auth.token.email == 'staff@amrita.edu';
+      // Ensure that only the verified staff account can delete, process, or view the entire list payload
+      allow update, delete, list: if request.auth != null && request.auth.token.email == 'staff@amrita.edu';
       
-      // The single track request endpoint can still query directly by ID if needed (though proxied as well)
+      // Track lookup is public
       allow get: if true;
     }
   }
