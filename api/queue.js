@@ -22,20 +22,28 @@ export default async function handler(req, res) {
     }
 
     try {
-        const snapshot = await db.collection('requests')
-            .where('status', '==', 'queued')
-            .orderBy('createdAt', 'asc')
-            .get();
+        // Fetch all documents. We avoid using compound where() + orderBy() queries
+        // to completely bypass the manual Firebase Composite Index requirement which
+        // currently crashes the read endpoint.
+        const snapshot = await db.collection('requests').get();
 
-        const docs = [];
+        let docs = [];
         snapshot.forEach(doc => {
             const data = doc.data();
-            // Convert serverTimestamp to ISO string if possible for clean JSON transfer
             if (data.createdAt && typeof data.createdAt.toDate === 'function') {
                 data.createdAt = data.createdAt.toDate().toISOString();
             }
             docs.push({ id: doc.id, ...data });
         });
+
+        // Filter and sort securely in Node runtime memory
+        docs = docs
+            .filter(d => d.status === 'queued')
+            .sort((a, b) => {
+                const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return timeA - timeB;
+            });
 
         return res.status(200).json({ ok: true, docs });
     } catch (error) {
