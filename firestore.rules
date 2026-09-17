@@ -2,18 +2,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /requests/{requestId} {
-      
-      // Students (unauthenticated) can create exactly governed queue items
       allow create: if request.resource.data.status == "queued"
         && request.resource.data.keys().hasAll(['requestId', 'rollNumber', 'studentName', 'problemType', 'status', 'createdAt'])
         && request.resource.data.rollNumber is string
         && request.resource.data.studentName is string && request.resource.data.studentName.size() <= 60
         && request.resource.data.problemType is string && request.resource.data.problemType.size() <= 30;
 
-      // Ensure that only the verified staff account can delete, process, or view the entire list payload
-      allow update, delete, list: if request.auth != null && request.auth.token.email == 'staff@amrita.edu';
-      
-      // Track lookup is public
+      allow update, delete, list: if request.auth != null;
       allow get: if true;
     }
   }
